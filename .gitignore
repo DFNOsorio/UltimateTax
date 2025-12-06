@@ -1,0 +1,5 @@
+scratch
+.zig-cache
+main.dSYM
+
+build_output
