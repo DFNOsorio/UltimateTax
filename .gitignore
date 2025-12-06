@@ -3,3 +3,5 @@ scratch
 main.dSYM
 
 build_output
+
+zig-out

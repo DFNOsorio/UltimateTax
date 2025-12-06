@@ -6,15 +6,18 @@ pub const helper = @import("helper.zig");
 // Options module passed from build.zig
 const pkgmeta = @import("pkgmeta");
 
+export fn zp_sqlite_hello() void {
+    // C ABI export, internal logic in another module
+    sqlite.sqlite_hello_impl() catch {};
+}
+
 pub const Version = struct {
     major: u8 = 0,
     minor: u8 = 0,
     patch: u8 = 0,
 
     pub fn toInt(self: Version) u32 {
-        return (@as(u32, self.major) << 16)
-            | (@as(u32, self.minor) << 8)
-            | (@as(u32, self.patch));
+        return (@as(u32, self.major) << 16) | (@as(u32, self.minor) << 8) | (@as(u32, self.patch));
     }
 
     pub fn format(self: Version, writer: anytype) !void {
