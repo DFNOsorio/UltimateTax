@@ -1,26 +1,33 @@
 const std = @import("std");
 
-// C ABI functions from libzigPortfolio
-extern fn zp_sqlite_hello() void;
-extern fn zp_version_major() c_int;
-extern fn zp_version_minor() c_int;
-extern fn zp_version_patch() c_int;
-extern fn zp_version_string(buf: [*]u8, len: usize) usize;
+pub const zp = @cImport({
+    @cInclude("zigPortfolio.h");
+});
 
 pub fn main() !void {
-    // Call hello from the shared library
-    zp_sqlite_hello();
 
-    // Get numeric version
-    const major = zp_version_major();
-    const minor = zp_version_minor();
-    const patch = zp_version_patch();
+    // Version
+    const major = zp.zp_version_major();
+    const minor = zp.zp_version_minor();
+    const patch = zp.zp_version_patch();
+    std.debug.print("Version: {d}.{d}.{d}\n", .{ major, minor, patch });
 
-    std.debug.print("Version numbers: {d}.{d}.{d}\n", .{ major, minor, patch });
+    // DB handle coming from the header (uintptr_t)
+    var handle: zp.zp_db_handle = 0;
+    const db_path = "../db/portfolio.db";
 
-    // Get version string
-    var buffer: [32]u8 = undefined;
-    const written = zp_version_string(&buffer, buffer.len);
+    const rc_open = zp.zp_sqlite_open(db_path, &handle);
+    if (rc_open != zp.ZP_ERROR_OK) {
+        std.debug.print("❌ Failed to open DB (err={d})\n", .{rc_open});
+        return;
+    }
 
-    std.debug.print("Version string: {s}\n", .{buffer[0..written]});
+    std.debug.print("✅ Opened DB. Handle = 0x{x}\n", .{handle});
+
+    const rc_close = zp.zp_sqlite_close(handle);
+    if (rc_close != zp.ZP_ERROR_OK) {
+        std.debug.print("⚠️ Failed to close DB (err={d})\n", .{rc_close});
+    } else {
+        std.debug.print("✅ Closed DB successfully.\n", .{});
+    }
 }

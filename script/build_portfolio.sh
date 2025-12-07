@@ -12,21 +12,20 @@ echo "zigPortfolio folder:  $PORTFOLIO_DIR"
 echo "Output directory:     $OUTPUT_DIR"
 echo ""
 
-# Create output directory if missing
 mkdir -p "$OUTPUT_DIR"
 
-# Build the library
 cd "$PORTFOLIO_DIR"
 zig build
 
 echo ""
-echo "📁 Copying library to output folder..."
+echo "📁 Copying library and header to output folder..."
 
 LIB_PATH="$PORTFOLIO_DIR/zig-out/lib/libzigPortfolio.dylib"
+HEADER_PATH="$PORTFOLIO_DIR/zig-out/zigPortfolio.h"
 
 if [ -f "$LIB_PATH" ]; then
     cp "$LIB_PATH" "$OUTPUT_DIR/"
-    echo "✅ Build complete. Library copied to:"
+    echo "✅ Library copied to:"
     echo "   $OUTPUT_DIR/libzigPortfolio.dylib"
 else
     echo "❌ ERROR: Could not find compiled library:"
@@ -34,17 +33,17 @@ else
     exit 1
 fi
 
-echo ""
-echo "🧹 Cleaning up zig-out folder..."
-
-# Extra safety check: zig-out must exist and be inside zigPortfolio
-if [[ "$PORTFOLIO_DIR/zig-out" == "$PORTFOLIO_DIR/zig-out" && -d "$PORTFOLIO_DIR/zig-out" ]]; then
-    rm -rf "$PORTFOLIO_DIR/zig-out"
-    echo "✔ Deleted zig-out folder."
+if [ -f "$HEADER_PATH" ]; then
+    cp "$HEADER_PATH" "$OUTPUT_DIR/"
+    echo "✅ Header copied to:"
+    echo "   $OUTPUT_DIR/zigPortfolio.h"
 else
-    echo "❌ Safety check failed: zig-out folder path is unexpected."
-    exit 1
+    echo "⚠️  WARNING: Header not found at:"
+    echo "   $HEADER_PATH"
 fi
+
+# Clean zig-out if you still want to
+rm -rf "$PORTFOLIO_DIR/zig-out"
 
 echo ""
 echo "🎉 Done!"

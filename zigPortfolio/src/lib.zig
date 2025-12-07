@@ -6,9 +6,19 @@ pub const helper = @import("helper.zig");
 // Options module passed from build.zig
 const pkgmeta = @import("pkgmeta");
 
-export fn zp_sqlite_hello() void {
-    // C ABI export, internal logic in another module
-    sqlite.sqlite_hello_impl() catch {};
+const DbHandle = helper.DbHandle;
+
+// C ABI: int zp_sqlite_open(const char *path, zp_db_handle *out_handle);
+export fn zp_sqlite_open(
+    path: [*:0]const u8,
+    out_handle: *DbHandle,
+) helper.ErrorCode {
+    return sqlite.sqlite_open_handle_impl(path, out_handle);
+}
+
+// C ABI: int zp_sqlite_close(zp_db_handle handle);
+export fn zp_sqlite_close(handle: DbHandle) helper.ErrorCode {
+    return sqlite.sqlite_close_handle_impl(handle);
 }
 
 pub const Version = struct {
