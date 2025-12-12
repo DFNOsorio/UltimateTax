@@ -9,13 +9,13 @@ DROP TABLE IF EXISTS trades;
 CREATE TABLE trades (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
 
-    broker              TEXT NOT NULL,
+    broker              TEXT NOT NULL DEFAULT 'IKBR',
 
     -- Local datetime of the trade in ISO format: "YYYY-MM-DD HH:MM"
     trade_datetime      TEXT NOT NULL,
 
     -- BUY or SELL
-    type                TEXT NOT NULL CHECK (type IN ('BUY', 'SELL')),
+    type                TEXT NOT NULL CHECK (type IN ('BUY', 'SELL')) DEFAULT 'BUY',
 
     -- Stock ticker symbol, e.g. "OSTK", "GE"
     ticker              TEXT NOT NULL,
@@ -30,13 +30,13 @@ CREATE TABLE trades (
     commission          REAL NOT NULL DEFAULT 0.0,
 
     -- Country of the market (e.g. "US")
-    country             TEXT,
+    country             TEXT NOT NULL DEFAULT 'US',
 
     -- Trade currency (e.g. "USD")
-    currency            TEXT NOT NULL,
+    currency            TEXT NOT NULL DEFAULT 'USD',
 
     -- How many units of this currency correspond to 1 EUR
-    conversion_rate_eur REAL NOT NULL
+    conversion_rate_eur REAL NOT NULL DEFAULT 1.0
 );
 
 -- Helpful indexes
