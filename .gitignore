@@ -4,4 +4,6 @@ main.dSYM
 
 build_output
 
+db/portfolio.db
+
 zig-out
