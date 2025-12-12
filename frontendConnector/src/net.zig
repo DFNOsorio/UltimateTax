@@ -8,26 +8,17 @@ const mem = std.mem;
 const db = @import("db.zig");
 const http = @import("http.zig");
 
-/// C signal API for handling Ctrl+C.
 const c = @cImport({
     @cInclude("signal.h");
 });
 
-/// Global shutdown flag, flipped by the SIGINT handler.
 var g_should_quit: bool = false;
 
-/// SIGINT (Ctrl+C) handler. Only sets a flag; main loop checks it.
-///
-/// Must match the C signal handler type: fn(c_int) callconv(.c) void.
 fn handle_sigint(sig: c_int) callconv(.c) void {
     _ = sig;
     g_should_quit = true;
 }
 
-/// Run the TCP server on 127.0.0.1:8080.
-///
-/// This function owns the listening socket and will close it on return.
-/// It delegates per-connection HTTP handling to http.handleConnection.
 pub fn runServer(db_handle: db.DbHandle) !void {
     const addr = try Address.parseIpAndPort("127.0.0.1:8080");
 
@@ -38,14 +29,12 @@ pub fn runServer(db_handle: db.DbHandle) !void {
     const sockfd = try posix.socket(addr.any.family, sock_flags, proto);
     defer posix.close(sockfd);
 
-    // Allow address/port reuse (Zig 0.15.2 uses posix.SO.REUSEADDR)
     try posix.setsockopt(
         sockfd,
         posix.SOL.SOCKET,
         posix.SO.REUSEADDR,
         &mem.toBytes(@as(i32, 1)),
     );
-
     if (@hasDecl(posix.SO, "REUSEPORT") and addr.any.family != posix.AF.UNIX) {
         try posix.setsockopt(
             sockfd,
@@ -62,7 +51,7 @@ pub fn runServer(db_handle: db.DbHandle) !void {
     _ = c.signal(c.SIGINT, handle_sigint);
 
     std.debug.print("🌐 Listening on http://127.0.0.1:8080 (Ctrl+C to stop gracefully)\n", .{});
-    std.debug.print("   POST /add will call the mock DB add endpoint.\n", .{});
+    std.debug.print("   POST /graphql for GraphQL requests.\n", .{});
 
     while (!g_should_quit) {
         var accepted_addr: Address = undefined;
@@ -91,15 +80,9 @@ pub fn runServer(db_handle: db.DbHandle) !void {
         printAddress(accepted_addr);
         std.debug.print("\n", .{});
 
-        var buf: [4096]u8 = undefined;
-        const n = stream.read(&buf) catch {
-            stream.close();
-            continue;
+        http.serveConnection(&stream, db_handle) catch |err| {
+            std.debug.print("⚠️ HTTP error: {any}\n", .{err});
         };
-
-        // If your http.handleConnection expects a pointer, pass &stream; otherwise pass stream.
-        // Recommended: make it take *Stream to be explicit.
-        try http.handleConnection(&stream, db_handle, buf[0..n]);
 
         stream.close();
     }
