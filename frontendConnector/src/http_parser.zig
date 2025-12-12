@@ -9,15 +9,19 @@ pub const RequestView = struct {
     body: []const u8,
 };
 
-/// Returns the index just after "\r\n\r\n" if present.
-pub fn headerEndIndex(buf: []const u8) ?usize {
+/// Returned when a full request is present in the buffer.
+pub const ParseResult = struct {
+    req: RequestView,
+    /// Number of bytes consumed from the buffer (headers + body).
+    consumed: usize,
+};
+
+fn headerEndIndex(buf: []const u8) ?usize {
     if (mem.indexOf(u8, buf, "\r\n\r\n")) |idx| return idx + 4;
     return null;
 }
 
-/// Parse Content-Length from headers (bytes before "\r\n\r\n").
-/// If missing/invalid, returns 0.
-pub fn parseContentLength(headers: []const u8) usize {
+fn parseContentLength(headers: []const u8) usize {
     var it = mem.splitSequence(u8, headers, "\r\n");
     while (it.next()) |line_raw| {
         const line = mem.trim(u8, line_raw, " \t\r\n");
@@ -32,9 +36,7 @@ pub fn parseContentLength(headers: []const u8) usize {
     return 0;
 }
 
-/// Parse method + path from the first line of the headers.
-/// Returns null if the request line is malformed.
-pub fn parseRequestLine(headers: []const u8) ?struct { method: Method, path: []const u8 } {
+fn parseRequestLine(headers: []const u8) ?struct { method: Method, path: []const u8 } {
     const line_end = mem.indexOfScalar(u8, headers, '\n') orelse return null;
     const first_line = mem.trim(u8, headers[0..line_end], " \r\n");
 
@@ -48,24 +50,29 @@ pub fn parseRequestLine(headers: []const u8) ?struct { method: Method, path: []c
     return .{ .method = method, .path = path };
 }
 
-/// If the buffer contains a full HTTP request (headers + body), return a RequestView.
-/// Otherwise return null.
+/// If `buf` contains a complete HTTP request (headers + body), returns:
+/// - parsed request slices *into buf*
+/// - the consumed byte count (for pipelining)
 ///
-/// Assumes non-chunked requests. (Good enough for now.)
-pub fn tryParseFullRequest(buf: []const u8) ?RequestView {
+/// Assumes non-chunked requests.
+pub fn tryParseFullRequest(buf: []const u8) ?ParseResult {
     const header_end = headerEndIndex(buf) orelse return null;
     const headers = buf[0 .. header_end - 4];
 
     const line = parseRequestLine(headers) orelse return null;
 
     const content_len = parseContentLength(headers);
-    if (buf.len < header_end + content_len) return null;
+    const total = header_end + content_len;
+    if (buf.len < total) return null;
 
-    const body = buf[header_end .. header_end + content_len];
+    const body = buf[header_end..total];
 
     return .{
-        .method = line.method,
-        .path = line.path,
-        .body = body,
+        .req = .{
+            .method = line.method,
+            .path = line.path,
+            .body = body,
+        },
+        .consumed = total,
     };
 }
