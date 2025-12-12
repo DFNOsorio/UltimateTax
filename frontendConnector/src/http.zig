@@ -13,13 +13,13 @@ pub const Response = struct {
 
 /// Route a parsed request to a response.
 /// `scratch` is used for generated bodies (GraphQL JSON).
-pub fn route(db_handle: db.DbHandle, req: parser.RequestView, scratch: []u8) Response {
+pub fn route(database: *db.Db, req: parser.RequestView, scratch: []u8) Response {
     if (req.method == .Get and mem.eql(u8, req.path, "/")) {
         return .{ .status = "200 OK", .content_type = "text/plain", .body = "Hello world\n" };
     }
 
     if (req.method == .Post and mem.eql(u8, req.path, "/graphql")) {
-        const json_body = graphql.execute(db_handle, req.body, scratch) catch {
+        const json_body = graphql.execute(database, req.body, scratch) catch {
             return .{
                 .status = "500 Internal Server Error",
                 .content_type = "application/json",

@@ -11,14 +11,14 @@ pub const GraphQLError = error{
 ///
 /// `request_body` is the HTTP body (either raw GraphQL or a small JSON wrapper).
 /// `out` is a caller-provided output buffer for the JSON response body.
-pub fn execute(db_handle: db.DbHandle, request_body: []const u8, out: []u8) GraphQLError![]const u8 {
+pub fn execute(database: *db.Db, request_body: []const u8, out: []u8) GraphQLError![]const u8 {
     const doc = extractGraphQLDocument(request_body);
 
     // Ultra-minimal "parser": detect supported fields by substring.
     // This is intentionally simple for learning; we’ll harden later.
     if (mem.indexOf(u8, doc, "addMock") != null) {
-        // Mock DB call
-        db.mockAddRecord(db_handle) catch {};
+        // DB call (mockable)
+        database.addMockRecord() catch {};
 
         return writeJson(out, "{\"data\":{\"addMock\":true}}");
     }

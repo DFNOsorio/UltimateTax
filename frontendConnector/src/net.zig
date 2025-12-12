@@ -62,7 +62,7 @@ const Worker = struct {
     };
 
     alloc: std.mem.Allocator,
-    db_handle: db.DbHandle,
+    database: *db.Db,
     wake_fd: posix.fd_t,
 
     mu: std.Thread.Mutex = .{},
@@ -130,7 +130,7 @@ const Worker = struct {
 
             // Execute GraphQL (JSON body)
             var json_scratch: [4096]u8 = undefined;
-            const json_body = graphql.execute(self.db_handle, job.body, &json_scratch) catch
+            const json_body = graphql.execute(self.database, job.body, &json_scratch) catch
                 "{\"errors\":[{\"message\":\"Internal error\"}]}";
 
             const resp: http.Response = .{
@@ -176,7 +176,7 @@ const Worker = struct {
     }
 };
 
-pub fn runServer(db_handle: db.DbHandle) !void {
+pub fn runServer(database: *db.Db) !void {
     const alloc = std.heap.c_allocator;
 
     // Build address
@@ -218,7 +218,7 @@ pub fn runServer(db_handle: db.DbHandle) !void {
     // Worker runtime + thread
     var worker: Worker = .{
         .alloc = alloc,
-        .db_handle = db_handle,
+        .database = database,
         .wake_fd = wake_write,
     };
     defer worker.deinit();
@@ -295,10 +295,10 @@ pub fn runServer(db_handle: db.DbHandle) !void {
             }
 
             if (ev.filter == c.EVFILT_READ) {
-                const ok = try handleRead(kq, alloc, db_handle, &worker, &conns, conn);
+                const ok = try handleRead(kq, alloc, database, &worker, &conns, conn);
                 if (!ok) continue;
             } else if (ev.filter == c.EVFILT_WRITE) {
-                handleWrite(kq, alloc, db_handle, &worker, &conns, conn);
+                handleWrite(kq, alloc, database, &worker, &conns, conn);
             }
         }
     }
@@ -342,7 +342,7 @@ fn acceptAll(kq: c_int, alloc: std.mem.Allocator, listen_fd: posix.fd_t, conns: 
 fn handleRead(
     kq: c_int,
     alloc: std.mem.Allocator,
-    db_handle: db.DbHandle,
+    database: *db.Db,
     worker: *Worker,
     conns: *std.AutoHashMap(posix.fd_t, *Conn),
     conn: *Conn,
@@ -385,7 +385,7 @@ fn handleRead(
                 return true;
             }
 
-            const resp = http.route(db_handle, req, conn.scratch[0..]);
+            const resp = http.route(database, req, conn.scratch[0..]);
             const out_bytes = http.buildResponseBytes(resp, conn.wbuf[0..]) catch {
                 closeConn(kq, alloc, conns, conn);
                 return false;
@@ -407,7 +407,7 @@ fn handleRead(
 fn handleWrite(
     kq: c_int,
     alloc: std.mem.Allocator,
-    db_handle: db.DbHandle,
+    database: *db.Db,
     worker: *Worker,
     conns: *std.AutoHashMap(posix.fd_t, *Conn),
     conn: *Conn,
@@ -435,7 +435,7 @@ fn handleWrite(
     enableFilter(kq, conn.fd, c.EVFILT_READ);
 
     if (conn.rlen > 0) {
-        _ = handleRead(kq, alloc, db_handle, worker, conns, conn) catch {
+        _ = handleRead(kq, alloc, database, worker, conns, conn) catch {
             closeConn(kq, alloc, conns, conn);
         };
     }

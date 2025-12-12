@@ -23,7 +23,7 @@ pub const Completion = struct {
 /// Thread-safe worker runtime: queues + wake pipe.
 pub const Runtime = struct {
     alloc: std.mem.Allocator,
-    db_handle: db.DbHandle,
+    database: *db.Db,
 
     mu: std.Thread.Mutex = .{},
     cv: std.Thread.Condition = .{},
@@ -36,10 +36,10 @@ pub const Runtime = struct {
     /// write-end of a pipe. Worker writes a byte to wake the main kqueue loop.
     wake_fd: posix.fd_t,
 
-    pub fn init(alloc: std.mem.Allocator, db_handle: db.DbHandle, wake_fd: posix.fd_t) Runtime {
+    pub fn init(alloc: std.mem.Allocator, database: *db.Db, wake_fd: posix.fd_t) Runtime {
         return .{
             .alloc = alloc,
-            .db_handle = db_handle,
+            .db_handle = database,
             .jobs = std.ArrayList(Job).init(alloc),
             .done = std.ArrayList(Completion).init(alloc),
             .wake_fd = wake_fd,

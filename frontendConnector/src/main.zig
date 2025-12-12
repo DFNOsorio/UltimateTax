@@ -1,18 +1,15 @@
-const db = @import("db.zig");
+const std = @import("std");
+
+const db_real = @import("db_zigportfolio.zig");
 const server = @import("net.zig");
 
-/// Entry point for the frontendConnector executable.
-///
-/// Responsibilities:
-/// - Open the zigPortfolio database
-/// - Log library version information
-/// - Run the TCP/HTTP server
-/// - Ensure resources are released on exit
 pub fn main() !void {
-    const handle = try db.openDefaultDb();
-    defer db.closeDb(handle);
+    const alloc = std.heap.c_allocator;
 
-    db.logLibraryVersion();
+    var database = try db_real.openDefaultDb(alloc);
+    defer database.deinit();
 
-    try server.runServer(handle);
+    db_real.logLibraryVersion();
+
+    try server.runServer(&database);
 }
