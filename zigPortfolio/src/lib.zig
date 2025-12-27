@@ -9,15 +9,46 @@ const pkgmeta = @import("pkgmeta");
 const DbHandle = helper.DbHandle;
 
 // C ABI: int zp_sqlite_open(const char *path, zp_db_handle *out_handle);
-export fn zp_sqlite_open(
+pub export fn zp_sqlite_open(
     path: [*:0]const u8,
     out_handle: *DbHandle,
 ) helper.ErrorCode {
     return sqlite.sqlite_open_handle_impl(path, out_handle);
 }
 
+pub export fn zp_sqlite_insert_trade(
+    handle: DbHandle,
+    trade_datetime: ?[*:0]const u8,
+    ticker: ?[*:0]const u8,
+    quantity: f64,
+    price_per_share: f64,
+    broker: ?[*:0]const u8,
+    trade_type: ?[*:0]const u8,
+    commission: f64,
+    country: ?[*:0]const u8,
+    currency: ?[*:0]const u8,
+    conversion_rate_eur: f64,
+) helper.ErrorCode {
+    if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
+    if (trade_datetime == null or ticker == null) return .invalid_argument;
+
+    return sqlite.sqlite_insert_trade(
+        handle,
+        trade_datetime.?,
+        ticker.?,
+        quantity,
+        price_per_share,
+        broker,
+        trade_type,
+        commission,
+        country,
+        currency,
+        conversion_rate_eur,
+    );
+}
+
 // C ABI: int zp_sqlite_close(zp_db_handle handle);
-export fn zp_sqlite_close(handle: DbHandle) helper.ErrorCode {
+pub export fn zp_sqlite_close(handle: DbHandle) helper.ErrorCode {
     return sqlite.sqlite_close_handle_impl(handle);
 }
 

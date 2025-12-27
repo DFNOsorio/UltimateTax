@@ -21,7 +21,7 @@ CREATE TABLE trades (
     ticker              TEXT NOT NULL,
 
     -- Number of shares
-    quantity            INTEGER NOT NULL,
+    quantity            REAL NOT NULL,
 
     -- Price per share in trade currency
     price_per_share     REAL NOT NULL,
@@ -48,3 +48,6 @@ CREATE INDEX idx_trades_datetime
 -- Per-ticker queries in time order
 CREATE INDEX idx_trades_ticker_datetime
     ON trades(ticker, trade_datetime);
+
+
+-- ADD VIRTUAL COLUMNS IN THE FUTURE
