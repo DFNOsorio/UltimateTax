@@ -3,6 +3,9 @@ const std = @import("std");
 pub const sqlite = @import("sqliteConnector.zig");
 pub const helper = @import("helper.zig");
 
+pub const trade_mod = @import("trade.zig");
+pub const zp_trade = trade_mod.zp_trade;
+
 // Options module passed from build.zig
 const pkgmeta = @import("pkgmeta");
 
@@ -45,6 +48,48 @@ pub export fn zp_sqlite_insert_trade(
         currency,
         conversion_rate_eur,
     );
+}
+
+pub export fn zp_sqlite_insert_trade_struct(
+    handle: DbHandle,
+    trade: ?*const zp_trade,
+) helper.ErrorCode {
+    if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
+    if (trade == null) return .invalid_argument;
+
+    const t = trade.?;
+
+    // Required fields
+    if (t.trade_datetime == null or t.ticker == null) return .invalid_argument;
+
+    // Reuse your existing code path
+    return sqlite.sqlite_insert_trade(
+        handle,
+        t.trade_datetime.?,
+        t.ticker.?,
+        t.quantity,
+        t.price_per_share,
+        t.broker,
+        t.type,
+        t.commission,
+        t.country,
+        t.currency,
+        t.conversion_rate_eur,
+    );
+}
+
+pub export fn zp_sqlite_read_trade_by_id(
+    handle: DbHandle,
+    id: u32,
+    out_trade: ?*zp_trade,
+) helper.ErrorCode {
+    if (out_trade == null) return .invalid_argument;
+    return sqlite.sqlite_read_trade_by_id(handle, id, out_trade.?);
+}
+
+pub export fn zp_trade_free(trade: ?*zp_trade) void {
+    if (trade == null) return;
+    sqlite.trade_free(trade.?);
 }
 
 // C ABI: int zp_sqlite_close(zp_db_handle handle);

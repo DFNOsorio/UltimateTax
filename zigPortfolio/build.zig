@@ -56,7 +56,7 @@ pub fn build(b: *Build) void {
     testopts_quiet.addOption(bool, "verbose_test_names", false);
 
     const tests_mod = b.createModule(.{
-        .root_source_file = b.path("tests/insert_trade_tests.zig"),
+        .root_source_file = b.path("tests/tests.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -77,7 +77,7 @@ pub fn build(b: *Build) void {
     testopts_verbose.addOption(bool, "verbose_test_names", true);
 
     const tests_mod_verbose = b.createModule(.{
-        .root_source_file = b.path("tests/insert_trade_tests.zig"),
+        .root_source_file = b.path("tests/tests.zig"),
         .target = target,
         .optimize = optimize,
     });

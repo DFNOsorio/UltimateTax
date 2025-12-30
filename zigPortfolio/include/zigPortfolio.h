@@ -14,9 +14,33 @@ typedef enum {
     ZP_ERROR_CLOSE_FAIL,
     ZP_ERROR_PREPARATION_FAIL,
     ZP_ERROR_INSERTION_ERROR,
-    ZP_ERROR_EXECUTION_FAIL
+    ZP_ERROR_EXECUTION_FAIL,
+    ZP_ERROR_READ_ROW_FAIL
 } zp_error_code;
 
+typedef struct zp_trade{
+    // Required (must be non-NULL C strings)
+    const char* trade_datetime;   // "YYYY-MM-DD HH:MM"
+    const char* ticker;
+
+    // Required numerics
+    double quantity;
+    double price_per_share;
+
+    // Optional/defaultable (can be NULL)
+    const char* broker;           // NULL => default "IKBR"
+    const char* type;             // NULL => default "BUY"
+
+    // Optional/defaultable (use sentinels)
+    double commission;            // NaN or <0 => default 0.0
+
+    // Optional/defaultable (can be NULL)
+    const char* country;          // NULL => default "US"
+    const char* currency;         // NULL => default "USD"
+
+    // Optional/defaultable (use sentinels)
+    double conversion_rate_eur;   // NaN or <=0 => default 1.0
+} zp_trade;
 
 zp_error_code zp_sqlite_open(const char *path, zp_db_handle *out_handle);
 zp_error_code zp_sqlite_insert_trade(
@@ -32,6 +56,22 @@ zp_error_code zp_sqlite_insert_trade(
     const char* currency,        // pass NULL to default "USD"
     double conversion_rate_eur   // pass NaN or <=0 sentinel to default 1.0
 );
+
+zp_error_code zp_sqlite_insert_trade_struct(
+    zp_db_handle handle,
+    const zp_trade* trade
+);
+
+// Read trade by id (allocates strings inside out_trade; caller must free)
+zp_error_code zp_sqlite_read_trade_by_id(
+    zp_db_handle handle,
+    uint32_t id,
+    zp_trade* out_trade
+);
+
+// Frees string fields allocated by zp_sqlite_read_trade_by_id
+void zp_trade_free(zp_trade* trade);
+
 zp_error_code zp_sqlite_close(zp_db_handle handle);
 
 int  zp_version_major(void);

@@ -281,3 +281,187 @@ test "insert_trade: defaults used when optional fields are NULL" {
     try std.testing.expectEqualStrings("USD", colText(stmt.?, 4));
     try std.testing.expectApproxEqAbs(@as(f64, 1.0), c.sqlite3_column_double(stmt.?, 5), 1e-12);
 }
+
+test "insert_trade_struct: valid insert round-trips values" {
+    vprint("RUNNING: insert_trade_struct: valid insert round-trips values");
+
+    const mem: [:0]const u8 = ":memory:";
+    const dt: [:0]const u8 = "2025-12-28 09:15";
+    const ticker_ge: [:0]const u8 = "GE";
+    const broker_ikbr: [:0]const u8 = "IKBR";
+    const type_sell: [:0]const u8 = "SELL";
+    const country_us: [:0]const u8 = "US";
+    const currency_usd: [:0]const u8 = "USD";
+
+    var handle: DbHandle = helper.INVALID_DB_HANDLE;
+
+    try std.testing.expectEqual(helper.ErrorCode.ok, api.zp_sqlite_open(mem.ptr, &handle));
+    defer _ = api.zp_sqlite_close(handle);
+
+    const db: *c.sqlite3 = @ptrFromInt(handle);
+    try execSql(db, schema_sql);
+
+    // ---- Build trade struct (choose the field name that matches your struct) ----
+    var t: api.zp_trade = .{
+        .trade_datetime = dt.ptr,
+        .ticker = ticker_ge.ptr,
+        .quantity = 10.0,
+        .price_per_share = 121.50,
+        .broker = broker_ikbr.ptr,
+        // If your zp_trade uses @"type":
+        .type = type_sell.ptr,
+        // If your zp_trade uses trade_type instead, replace the line above with:
+        // .trade_type = type_sell.ptr,
+        .commission = 1.23,
+        .country = country_us.ptr,
+        .currency = currency_usd.ptr,
+        .conversion_rate_eur = 1.0,
+    };
+
+    const rc = api.zp_sqlite_insert_trade_struct(handle, &t);
+    try std.testing.expectEqual(helper.ErrorCode.ok, rc);
+    try std.testing.expectEqual(@as(i64, 1), try countTrades(db));
+
+    // Verify inserted values via SQL
+    var stmt: ?*c.sqlite3_stmt = null;
+    const q: [:0]const u8 =
+        \\SELECT broker, trade_datetime, "type", ticker,
+        \\       quantity, price_per_share, commission,
+        \\       country, currency, conversion_rate_eur
+        \\FROM trades WHERE ticker = ? LIMIT 1;
+    ;
+
+    var qrc: c_int = c.sqlite3_prepare_v2(db, q.ptr, -1, &stmt, null);
+    try std.testing.expectEqual(@as(c_int, c.SQLITE_OK), qrc);
+    defer _ = c.sqlite3_finalize(stmt.?);
+
+    qrc = c.sqlite3_bind_text(stmt.?, 1, ticker_ge.ptr, -1, c.SQLITE_TRANSIENT);
+    try std.testing.expectEqual(@as(c_int, c.SQLITE_OK), qrc);
+
+    qrc = c.sqlite3_step(stmt.?);
+    try std.testing.expectEqual(@as(c_int, c.SQLITE_ROW), qrc);
+
+    try std.testing.expectEqualStrings("IKBR", colText(stmt.?, 0));
+    try std.testing.expectEqualStrings("2025-12-28 09:15", colText(stmt.?, 1));
+    try std.testing.expectEqualStrings("SELL", colText(stmt.?, 2));
+    try std.testing.expectEqualStrings("GE", colText(stmt.?, 3));
+
+    try std.testing.expectApproxEqAbs(@as(f64, 10.0), c.sqlite3_column_double(stmt.?, 4), 1e-12);
+    try std.testing.expectApproxEqAbs(@as(f64, 121.50), c.sqlite3_column_double(stmt.?, 5), 1e-12);
+    try std.testing.expectApproxEqAbs(@as(f64, 1.23), c.sqlite3_column_double(stmt.?, 6), 1e-12);
+
+    try std.testing.expectEqualStrings("US", colText(stmt.?, 7));
+    try std.testing.expectEqualStrings("USD", colText(stmt.?, 8));
+    try std.testing.expectApproxEqAbs(@as(f64, 1.0), c.sqlite3_column_double(stmt.?, 9), 1e-12);
+}
+
+test "insert_trade_struct: invalid_argument when trade ptr is NULL" {
+    vprint("RUNNING: insert_trade_struct: invalid_argument when trade ptr is NULL");
+
+    const mem: [:0]const u8 = ":memory:";
+    var handle: DbHandle = helper.INVALID_DB_HANDLE;
+
+    try std.testing.expectEqual(helper.ErrorCode.ok, api.zp_sqlite_open(mem.ptr, &handle));
+    defer _ = api.zp_sqlite_close(handle);
+
+    const rc = api.zp_sqlite_insert_trade_struct(handle, null);
+    try std.testing.expectEqual(helper.ErrorCode.invalid_argument, rc);
+}
+
+test "insert_trade_struct: invalid_argument when required fields are NULL" {
+    vprint("RUNNING: insert_trade_struct: invalid_argument when required fields are NULL");
+
+    const mem: [:0]const u8 = ":memory:";
+    const dt: [:0]const u8 = "2025-12-28 09:15";
+    const ticker_ge: [:0]const u8 = "GE";
+
+    var handle: DbHandle = helper.INVALID_DB_HANDLE;
+    try std.testing.expectEqual(helper.ErrorCode.ok, api.zp_sqlite_open(mem.ptr, &handle));
+    defer _ = api.zp_sqlite_close(handle);
+
+    // Missing trade_datetime
+    var t1: api.zp_trade = .{
+        .trade_datetime = null,
+        .ticker = ticker_ge.ptr,
+        .quantity = 1.0,
+        .price_per_share = 100.0,
+        .broker = null,
+        .type = null, // or .trade_type = null
+        .commission = 0.0,
+        .country = null,
+        .currency = null,
+        .conversion_rate_eur = 1.0,
+    };
+
+    try std.testing.expectEqual(helper.ErrorCode.invalid_argument, api.zp_sqlite_insert_trade_struct(handle, &t1));
+
+    // Missing ticker
+    var t2: api.zp_trade = .{
+        .trade_datetime = dt.ptr,
+        .ticker = null,
+        .quantity = 1.0,
+        .price_per_share = 100.0,
+        .broker = null,
+        .type = null, // or .trade_type = null
+        .commission = 0.0,
+        .country = null,
+        .currency = null,
+        .conversion_rate_eur = 1.0,
+    };
+
+    try std.testing.expectEqual(helper.ErrorCode.invalid_argument, api.zp_sqlite_insert_trade_struct(handle, &t2));
+}
+
+test "insert_trade_struct: defaults used when optional fields are NULL / sentinels" {
+    vprint("RUNNING: insert_trade_struct: defaults used when optional fields are NULL / sentinels");
+
+    const mem: [:0]const u8 = ":memory:";
+    const dt: [:0]const u8 = "2025-12-28 11:00";
+    const ticker_ostk: [:0]const u8 = "OSTK";
+
+    var handle: DbHandle = helper.INVALID_DB_HANDLE;
+    try std.testing.expectEqual(helper.ErrorCode.ok, api.zp_sqlite_open(mem.ptr, &handle));
+    defer _ = api.zp_sqlite_close(handle);
+
+    const db: *c.sqlite3 = @ptrFromInt(handle);
+    try execSql(db, schema_sql);
+
+    var t: api.zp_trade = .{
+        .trade_datetime = dt.ptr,
+        .ticker = ticker_ostk.ptr,
+        .quantity = 2.0,
+        .price_per_share = 50.0,
+        .broker = null, // default IKBR (via COALESCE)
+        .type = null, // default BUY (via COALESCE)  (or .trade_type = null)
+        .commission = std.math.nan(f64), // sentinel -> NULL bind -> default 0.0
+        .country = null, // default US
+        .currency = null, // default USD
+        .conversion_rate_eur = 0.0, // sentinel -> NULL bind -> default 1.0
+    };
+
+    const rc = api.zp_sqlite_insert_trade_struct(handle, &t);
+    try std.testing.expectEqual(helper.ErrorCode.ok, rc);
+
+    var stmt: ?*c.sqlite3_stmt = null;
+    const q: [:0]const u8 =
+        \\SELECT broker, "type", commission, country, currency, conversion_rate_eur
+        \\FROM trades WHERE ticker = ? LIMIT 1;
+    ;
+
+    var qrc: c_int = c.sqlite3_prepare_v2(db, q.ptr, -1, &stmt, null);
+    try std.testing.expectEqual(@as(c_int, c.SQLITE_OK), qrc);
+    defer _ = c.sqlite3_finalize(stmt.?);
+
+    qrc = c.sqlite3_bind_text(stmt.?, 1, ticker_ostk.ptr, -1, c.SQLITE_TRANSIENT);
+    try std.testing.expectEqual(@as(c_int, c.SQLITE_OK), qrc);
+
+    qrc = c.sqlite3_step(stmt.?);
+    try std.testing.expectEqual(@as(c_int, c.SQLITE_ROW), qrc);
+
+    try std.testing.expectEqualStrings("IKBR", colText(stmt.?, 0));
+    try std.testing.expectEqualStrings("BUY", colText(stmt.?, 1));
+    try std.testing.expectApproxEqAbs(@as(f64, 0.0), c.sqlite3_column_double(stmt.?, 2), 1e-12);
+    try std.testing.expectEqualStrings("US", colText(stmt.?, 3));
+    try std.testing.expectEqualStrings("USD", colText(stmt.?, 4));
+    try std.testing.expectApproxEqAbs(@as(f64, 1.0), c.sqlite3_column_double(stmt.?, 5), 1e-12);
+}
