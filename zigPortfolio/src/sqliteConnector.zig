@@ -29,6 +29,25 @@ const sql_read_by_year: [:0]const u8 =
     \\ORDER BY trade_datetime ASC, id ASC;
 ;
 
+const sql_read_by_broker: [:0]const u8 =
+    \\SELECT broker, trade_datetime, "type", ticker,
+    \\       quantity, price_per_share, commission,
+    \\       country, currency, conversion_rate_eur
+    \\FROM trades
+    \\WHERE broker = ?1
+    \\ORDER BY trade_datetime ASC, id ASC;
+;
+
+const sql_read_by_year_and_broker: [:0]const u8 =
+    \\SELECT broker, trade_datetime, "type", ticker,
+    \\       quantity, price_per_share, commission,
+    \\       country, currency, conversion_rate_eur
+    \\FROM trades
+    \\WHERE substr(trade_datetime, 1, 4) = ?1
+    \\  AND broker = ?2
+    \\ORDER BY trade_datetime ASC, id ASC;
+;
+
 pub fn sqlite_hello_impl() void {
     std.debug.print("Hello from sqliteConnector!\n", .{});
 }
@@ -250,6 +269,48 @@ fn stmt_to_trade(stmt: *c.sqlite3_stmt, out: *trade.zp_trade) void {
     out.conversion_rate_eur = c.sqlite3_column_double(stmt, 9);
 }
 
+fn step_rows_into_array(
+    stmt: *c.sqlite3_stmt,
+    out_trades: [*]trade.zp_trade,
+    out_cap: usize,
+    out_count: *usize,
+) helper.ErrorCode {
+    var idx: usize = 0;
+
+    while (true) {
+        const rc: c_int = c.sqlite3_step(stmt);
+
+        if (rc == c.SQLITE_ROW) {
+            if (idx >= out_cap) break; // truncate safely
+            stmt_to_trade(stmt, &out_trades[idx]);
+            idx += 1;
+            continue;
+        }
+
+        if (rc == c.SQLITE_DONE) break;
+
+        return .read_row_fail;
+    }
+
+    out_count.* = idx;
+    return .ok;
+}
+
+fn bind_year_yyyy(stmt: *c.sqlite3_stmt, param_index: c_int, year: u32) helper.ErrorCode {
+    var year_buf: [5]u8 = undefined;
+    _ = std.fmt.bufPrintZ(&year_buf, "{d:0>4}", .{year}) catch return .invalid_argument;
+
+    const rc: c_int = c.sqlite3_bind_text(
+        stmt,
+        param_index,
+        @ptrCast(year_buf[0..].ptr),
+        -1,
+        c.SQLITE_TRANSIENT,
+    );
+
+    return if (rc == c.SQLITE_OK) .ok else .preparation_fail;
+}
+
 /// Read exactly one trade by DB id.
 /// Returns:
 /// - .ok if found and written
@@ -296,35 +357,66 @@ pub fn sqlite_read_trades_by_year(
     const db_ptr: *c.sqlite3 = @ptrFromInt(handle);
     var stmt: ?*c.sqlite3_stmt = null;
 
-    var rc: c_int = c.sqlite3_prepare_v2(db_ptr, sql_read_by_year.ptr, -1, &stmt, null);
+    const rc: c_int = c.sqlite3_prepare_v2(db_ptr, sql_read_by_year.ptr, -1, &stmt, null);
     if (rc != c.SQLITE_OK or stmt == null) return .preparation_fail;
     defer _ = c.sqlite3_finalize(stmt.?);
 
-    var year_buf: [5]u8 = undefined;
-    _ = std.fmt.bufPrintZ(&year_buf, "{d:0>4}", .{year}) catch {
-        return .invalid_argument;
-    };
+    const yrc = bind_year_yyyy(stmt.?, 1, year);
+    if (yrc != .ok) return yrc;
 
-    rc = c.sqlite3_bind_text(stmt.?, 1, @ptrCast(year_buf[0..].ptr), -1, c.SQLITE_TRANSIENT);
+    return step_rows_into_array(stmt.?, out_trades, out_cap, out_count);
+}
+
+/// Read all trades for a given broker into a caller-provided array.
+/// - broker must be a C string (non-null, non-empty)
+/// - out_trades must have capacity out_cap
+/// - out_count returns number of rows written (may be < total rows if truncated)
+pub fn sqlite_read_trades_by_broker(
+    handle: DbHandle,
+    broker: [*:0]const u8,
+    out_trades: [*]trade.zp_trade,
+    out_cap: usize,
+    out_count: *usize,
+) helper.ErrorCode {
+    out_count.* = 0;
+
+    const db_ptr: *c.sqlite3 = @ptrFromInt(handle);
+    var stmt: ?*c.sqlite3_stmt = null;
+
+    var rc: c_int = c.sqlite3_prepare_v2(db_ptr, sql_read_by_broker.ptr, -1, &stmt, null);
+    if (rc != c.SQLITE_OK or stmt == null) return .preparation_fail;
+    defer _ = c.sqlite3_finalize(stmt.?);
+
+    rc = c.sqlite3_bind_text(stmt.?, 1, broker, -1, c.SQLITE_TRANSIENT);
     if (rc != c.SQLITE_OK) return .preparation_fail;
 
-    var idx: usize = 0;
-    while (true) {
-        rc = c.sqlite3_step(stmt.?);
-        if (rc == c.SQLITE_ROW) {
-            if (idx >= out_cap) break; // truncate safely
-            stmt_to_trade(stmt.?, &out_trades[idx]);
-            idx += 1;
-            continue;
-        } else if (rc == c.SQLITE_DONE) {
-            break;
-        } else {
-            return .read_row_fail;
-        }
-    }
+    return step_rows_into_array(stmt.?, out_trades, out_cap, out_count);
+}
 
-    out_count.* = idx;
-    return .ok;
+pub fn sqlite_read_trades_by_year_and_broker(
+    handle: DbHandle,
+    year: u32,
+    broker: [*:0]const u8,
+    out_trades: [*]trade.zp_trade,
+    out_cap: usize,
+    out_count: *usize,
+) helper.ErrorCode {
+    out_count.* = 0;
+
+    const db_ptr: *c.sqlite3 = @ptrFromInt(handle);
+    var stmt: ?*c.sqlite3_stmt = null;
+
+    var rc: c_int = c.sqlite3_prepare_v2(db_ptr, sql_read_by_year_and_broker.ptr, -1, &stmt, null);
+    if (rc != c.SQLITE_OK or stmt == null) return .preparation_fail;
+    defer _ = c.sqlite3_finalize(stmt.?);
+
+    const yrc = bind_year_yyyy(stmt.?, 1, year);
+    if (yrc != .ok) return yrc;
+
+    rc = c.sqlite3_bind_text(stmt.?, 2, broker, -1, c.SQLITE_TRANSIENT);
+    if (rc != c.SQLITE_OK) return .preparation_fail;
+
+    return step_rows_into_array(stmt.?, out_trades, out_cap, out_count);
 }
 
 /// Close a DB given an opaque handle.

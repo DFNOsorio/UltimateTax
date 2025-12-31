@@ -1,12 +1,18 @@
 const std = @import("std");
 const testopts = @import("testopts");
 
+// Import your public C-ABI surface (so we test what C callers use).
 const api = @import("api");
+
+// Reuse sqlite3 cImport already defined in sqliteConnector.zig.
 const sqlite = api.sqlite;
 const c = sqlite.c;
 
 const helper = api.helper;
 const DbHandle = helper.DbHandle;
+
+// zp_trade is the unified struct you want to use everywhere.
+const Trade = api.trade.zp_trade;
 
 inline fn vprint(comptime msg: []const u8) void {
     if (testopts.verbose_test_names) {
@@ -48,65 +54,108 @@ fn execSql(db: *c.sqlite3, sql: [:0]const u8) !void {
     try std.testing.expectEqual(@as(c_int, c.SQLITE_OK), rc);
 }
 
-fn insertSeedTrades(handle: DbHandle) helper.ErrorCode {
-    // We rely on sqliteConnector’s COALESCE defaults + sentinel normalization.
-    // Insert 3 rows:
-    //  id=1: 2024
-    //  id=2: 2025
-    //  id=3: 2025
-    const rc1 = api.zp_sqlite_insert_trade(
-        handle,
-        "2024-06-01 10:00",
-        "GE",
-        1.0,
-        100.0,
-        "IKBR",
-        "BUY",
-        0.0,
-        "US",
-        "USD",
-        1.0,
+fn zbufToSlice(buf: []const u8) []const u8 {
+    const end = std.mem.indexOfScalar(u8, buf, 0) orelse buf.len;
+    return buf[0..end];
+}
+
+fn expectTradeText(buf: []const u8, expected: []const u8) !void {
+    try std.testing.expectEqualStrings(expected, zbufToSlice(buf));
+}
+
+fn seedTrades(handle: DbHandle) !void {
+    // Insert 4 trades with known brokers + years.
+    // Fresh DB => ids will be 1..N in insertion order.
+
+    const dt_2024_a: [:0]const u8 = "2024-01-15 10:00";
+    const dt_2025_a: [:0]const u8 = "2025-02-10 09:00";
+    const dt_2025_b: [:0]const u8 = "2025-06-11 14:30";
+    const dt_2025_c: [:0]const u8 = "2025-12-20 18:45";
+
+    const broker_ikbr: [:0]const u8 = "IKBR";
+    const broker_rev: [:0]const u8 = "REVOLUT";
+
+    const type_buy: [:0]const u8 = "BUY";
+    const type_sell: [:0]const u8 = "SELL";
+
+    const country_us: [:0]const u8 = "US";
+    const currency_usd: [:0]const u8 = "USD";
+
+    // id=1 (2024, IKBR)
+    try std.testing.expectEqual(
+        helper.ErrorCode.ok,
+        api.zp_sqlite_insert_trade(
+            handle,
+            dt_2024_a.ptr,
+            "GE".ptr,
+            1.0,
+            100.0,
+            broker_ikbr.ptr,
+            type_buy.ptr,
+            0.5,
+            country_us.ptr,
+            currency_usd.ptr,
+            1.0,
+        ),
     );
-    if (rc1 != .ok) return rc1;
 
-    const rc2 = api.zp_sqlite_insert_trade(
-        handle,
-        "2025-01-02 09:30",
-        "AAPL",
-        2.0,
-        200.0,
-        null,
-        null,
-        std.math.nan(f64),
-        null,
-        null,
-        0.0,
+    // id=2 (2025, IKBR)
+    try std.testing.expectEqual(
+        helper.ErrorCode.ok,
+        api.zp_sqlite_insert_trade(
+            handle,
+            dt_2025_a.ptr,
+            "OSTK".ptr,
+            2.0,
+            50.0,
+            broker_ikbr.ptr,
+            type_buy.ptr,
+            0.0,
+            country_us.ptr,
+            currency_usd.ptr,
+            1.0,
+        ),
     );
-    if (rc2 != .ok) return rc2;
 
-    const rc3 = api.zp_sqlite_insert_trade(
-        handle,
-        "2025-12-31 15:45",
-        "MSFT",
-        3.0,
-        300.0,
-        "IKBR",
-        "SELL",
-        1.0,
-        "US",
-        "USD",
-        1.0,
+    // id=3 (2025, REVOLUT)
+    try std.testing.expectEqual(
+        helper.ErrorCode.ok,
+        api.zp_sqlite_insert_trade(
+            handle,
+            dt_2025_b.ptr,
+            "AAPL".ptr,
+            3.0,
+            200.0,
+            broker_rev.ptr,
+            type_buy.ptr,
+            1.0,
+            country_us.ptr,
+            currency_usd.ptr,
+            1.0,
+        ),
     );
-    return rc3;
+
+    // id=4 (2025, REVOLUT)
+    try std.testing.expectEqual(
+        helper.ErrorCode.ok,
+        api.zp_sqlite_insert_trade(
+            handle,
+            dt_2025_c.ptr,
+            "MSFT".ptr,
+            4.0,
+            300.0,
+            broker_rev.ptr,
+            type_sell.ptr,
+            2.0,
+            country_us.ptr,
+            currency_usd.ptr,
+            1.0,
+        ),
+    );
 }
 
-fn cstrSlice(buf: []const u8) []const u8 {
-    const n = std.mem.indexOfScalar(u8, buf, 0) orelse buf.len;
-    return buf[0..n];
-}
-
-test "read_trade_by_id: reads expected row into zp_trade" {
-    vprint("RUNNING: read_trade_by_id: reads expected row into zp_trade");
+test "read_trades_by_year: returns only that year in correct order" {
+    vprint("RUNNING: read_trades_by_year: returns only that year in correct order");
 
     const mem: [:0]const u8 = ":memory:";
     var handle: DbHandle = helper.INVALID_DB_HANDLE;
@@ -116,23 +165,29 @@ test "read_trade_by_id: reads expected row into zp_trade" {
 
     const db: *c.sqlite3 = @ptrFromInt(handle);
     try execSql(db, schema_sql);
-    try std.testing.expectEqual(helper.ErrorCode.ok, insertSeedTrades(handle));
 
-    var out: api.zp_trade = std.mem.zeroes(api.zp_trade);
+    try seedTrades(handle);
 
-    const rc = api.zp_sqlite_read_trade_by_id(handle, 2, &out);
+    var out: [8]Trade = undefined;
+    var count: usize = 0;
+
+    const rc = api.zp_sqlite_read_trades_by_year(handle, 2025, @ptrCast(&out), out.len, &count);
     try std.testing.expectEqual(helper.ErrorCode.ok, rc);
+    try std.testing.expectEqual(@as(usize, 3), count);
 
-    try std.testing.expectEqualStrings("2025-01-02 09:30", cstrSlice(&out.trade_datetime));
-    try std.testing.expectEqualStrings("AAPL", cstrSlice(&out.ticker));
+    // Expect chronological order: 2025-02-10, 2025-06-11, 2025-12-20
+    try expectTradeText(out[0].trade_datetime[0..], "2025-02-10 09:00");
+    try expectTradeText(out[1].trade_datetime[0..], "2025-06-11 14:30");
+    try expectTradeText(out[2].trade_datetime[0..], "2025-12-20 18:45");
 
-    // Defaults were applied at insert time
-    try std.testing.expectEqualStrings("IKBR", cstrSlice(&out.broker));
-    try std.testing.expectEqualStrings("BUY", cstrSlice(&out.trade_type));
+    // Spot-check brokers
+    try expectTradeText(out[0].broker[0..], "IKBR");
+    try expectTradeText(out[1].broker[0..], "REVOLUT");
+    try expectTradeText(out[2].broker[0..], "REVOLUT");
 }
 
-test "read_trade_by_id: execution_fail when id not found" {
-    vprint("RUNNING: read_trade_by_id: execution_fail when id not found");
+test "read_trades_by_broker: returns only that broker" {
+    vprint("RUNNING: read_trades_by_broker: returns only that broker");
 
     const mem: [:0]const u8 = ":memory:";
     var handle: DbHandle = helper.INVALID_DB_HANDLE;
@@ -142,41 +197,35 @@ test "read_trade_by_id: execution_fail when id not found" {
 
     const db: *c.sqlite3 = @ptrFromInt(handle);
     try execSql(db, schema_sql);
-    try std.testing.expectEqual(helper.ErrorCode.ok, insertSeedTrades(handle));
 
-    var out: api.zp_trade = std.mem.zeroes(api.zp_trade);
-    const rc = api.zp_sqlite_read_trade_by_id(handle, 999, &out);
-    try std.testing.expectEqual(helper.ErrorCode.execution_fail, rc);
-}
+    try seedTrades(handle);
 
-test "read_trades_by_year: returns only trades for requested year" {
-    vprint("RUNNING: read_trades_by_year: returns only trades for requested year");
+    const broker_rev: [:0]const u8 = "REVOLUT";
 
-    const mem: [:0]const u8 = ":memory:";
-    var handle: DbHandle = helper.INVALID_DB_HANDLE;
+    var out: [8]Trade = undefined;
+    var count: usize = 0;
 
-    try std.testing.expectEqual(helper.ErrorCode.ok, api.zp_sqlite_open(mem.ptr, &handle));
-    defer _ = api.zp_sqlite_close(handle);
-
-    const db: *c.sqlite3 = @ptrFromInt(handle);
-    try execSql(db, schema_sql);
-    try std.testing.expectEqual(helper.ErrorCode.ok, insertSeedTrades(handle));
-
-    var out: [8]api.zp_trade = undefined;
-    @memset(&out, std.mem.zeroes(api.zp_trade));
-
-    var out_count: usize = 0;
-
-    const rc = api.zp_sqlite_read_trades_by_year(handle, 2025, &out, out.len, &out_count);
+    const rc = api.zp_sqlite_read_trades_by_broker(handle, broker_rev.ptr, @ptrCast(&out), out.len, &count);
     try std.testing.expectEqual(helper.ErrorCode.ok, rc);
-    try std.testing.expectEqual(@as(usize, 2), out_count);
+    try std.testing.expectEqual(@as(usize, 2), count);
 
-    try std.testing.expectEqualStrings("AAPL", cstrSlice(&out[0].ticker));
-    try std.testing.expectEqualStrings("MSFT", cstrSlice(&out[1].ticker));
+    // Both rows must be REVOLUT and in time order
+    try expectTradeText(out[0].broker[0..], "REVOLUT");
+    try expectTradeText(out[1].broker[0..], "REVOLUT");
+
+    try expectTradeText(out[0].trade_datetime[0..], "2025-06-11 14:30");
+    try expectTradeText(out[1].trade_datetime[0..], "2025-12-20 18:45");
+
+    // Spot-check tickers and numerics
+    try expectTradeText(out[0].ticker[0..], "AAPL");
+    try std.testing.expectApproxEqAbs(@as(f64, 3.0), out[0].quantity, 1e-12);
+
+    try expectTradeText(out[1].ticker[0..], "MSFT");
+    try std.testing.expectApproxEqAbs(@as(f64, 4.0), out[1].quantity, 1e-12);
 }
 
-test "read_trades_by_year: truncates safely to out_cap" {
-    vprint("RUNNING: read_trades_by_year: truncates safely to out_cap");
+test "read_trades_by_year_and_broker: returns only that year+broker" {
+    vprint("RUNNING: read_trades_by_year_and_broker: returns only that year+broker");
 
     const mem: [:0]const u8 = ":memory:";
     var handle: DbHandle = helper.INVALID_DB_HANDLE;
@@ -186,14 +235,51 @@ test "read_trades_by_year: truncates safely to out_cap" {
 
     const db: *c.sqlite3 = @ptrFromInt(handle);
     try execSql(db, schema_sql);
-    try std.testing.expectEqual(helper.ErrorCode.ok, insertSeedTrades(handle));
 
-    var out: [1]api.zp_trade = undefined;
-    @memset(&out, std.mem.zeroes(api.zp_trade));
+    try seedTrades(handle);
 
-    var out_count: usize = 0;
+    const broker_ikbr: [:0]const u8 = "IKBR";
 
-    const rc = api.zp_sqlite_read_trades_by_year(handle, 2025, &out, out.len, &out_count);
+    var out: [8]Trade = undefined;
+    var count: usize = 0;
+
+    const rc = api.zp_sqlite_read_trades_by_year_and_broker(
+        handle,
+        2025,
+        broker_ikbr.ptr,
+        @ptrCast(&out),
+        out.len,
+        &count,
+    );
     try std.testing.expectEqual(helper.ErrorCode.ok, rc);
-    try std.testing.expectEqual(@as(usize, 1), out_count);
+    try std.testing.expectEqual(@as(usize, 1), count);
+
+    try expectTradeText(out[0].broker[0..], "IKBR");
+    try expectTradeText(out[0].trade_datetime[0..], "2025-02-10 09:00");
+    try expectTradeText(out[0].ticker[0..], "OSTK");
+    try std.testing.expectApproxEqAbs(@as(f64, 2.0), out[0].quantity, 1e-12);
+}
+
+test "read_trades_by_broker: broker with no rows returns count=0" {
+    vprint("RUNNING: read_trades_by_broker: broker with no rows returns count=0");
+
+    const mem: [:0]const u8 = ":memory:";
+    var handle: DbHandle = helper.INVALID_DB_HANDLE;
+
+    try std.testing.expectEqual(helper.ErrorCode.ok, api.zp_sqlite_open(mem.ptr, &handle));
+    defer _ = api.zp_sqlite_close(handle);
+
+    const db: *c.sqlite3 = @ptrFromInt(handle);
+    try execSql(db, schema_sql);
+
+    try seedTrades(handle);
+
+    const broker_none: [:0]const u8 = "NOPE";
+
+    var out: [4]Trade = undefined;
+    var count: usize = 123; // ensure function overwrites it
+
+    const rc = api.zp_sqlite_read_trades_by_broker(handle, broker_none.ptr, @ptrCast(&out), out.len, &count);
+    try std.testing.expectEqual(helper.ErrorCode.ok, rc);
+    try std.testing.expectEqual(@as(usize, 0), count);
 }

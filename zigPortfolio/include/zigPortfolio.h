@@ -95,6 +95,23 @@ zp_error_code zp_sqlite_read_trades_by_year(
     size_t* out_count
 );
 
+zp_error_code zp_sqlite_read_trades_by_broker(
+    zp_db_handle handle,
+    const char* broker,      // required, non-NULL, non-empty
+    zp_trade* out_trades,     // array
+    size_t capacity,          // number of zp_trade slots in out_trades
+    size_t* out_count         // returns how many rows were written
+);
+
+zp_error_code zp_sqlite_read_trades_by_year_and_broker(
+    zp_db_handle handle,
+    uint32_t year,
+    const char* broker,
+    zp_trade* out_trades,
+    size_t capacity,
+    size_t* out_count
+);
+
 zp_error_code zp_sqlite_close(zp_db_handle handle);
 
 int    zp_version_major(void);

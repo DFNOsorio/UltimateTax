@@ -92,6 +92,60 @@ pub export fn zp_sqlite_read_trades_by_year(
     return sqlite.sqlite_read_trades_by_year(handle, year, out_trades.?, out_cap, out_count.?);
 }
 
+pub export fn zp_sqlite_read_trades_by_broker(
+    handle: DbHandle,
+    broker: ?[*:0]const u8,
+    out_trades: ?[*]trade.zp_trade,
+    capacity: usize,
+    out_count: *usize,
+) helper.ErrorCode {
+    if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
+    if (out_count.* != out_count.*) {} // no-op; keeps some linters quiet (optional)
+
+    out_count.* = 0;
+
+    if (broker == null) return .invalid_argument;
+    if (broker.?[0] == 0) return .invalid_argument;
+
+    if (capacity == 0) return .ok;
+    if (out_trades == null) return .invalid_argument;
+
+    return sqlite.sqlite_read_trades_by_broker(
+        handle,
+        broker.?,
+        out_trades.?,
+        capacity,
+        out_count,
+    );
+}
+
+pub export fn zp_sqlite_read_trades_by_year_and_broker(
+    handle: DbHandle,
+    year: u32,
+    broker: ?[*:0]const u8,
+    out_trades: ?[*]trade.zp_trade,
+    capacity: usize,
+    out_count: *usize,
+) helper.ErrorCode {
+    if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
+    out_count.* = 0;
+
+    if (broker == null) return .invalid_argument;
+    if (broker.?[0] == 0) return .invalid_argument;
+
+    if (capacity == 0) return .ok;
+    if (out_trades == null) return .invalid_argument;
+
+    return sqlite.sqlite_read_trades_by_year_and_broker(
+        handle,
+        year,
+        broker.?,
+        out_trades.?,
+        capacity,
+        out_count,
+    );
+}
+
 // C ABI: int zp_sqlite_close(zp_db_handle handle);
 pub export fn zp_sqlite_close(handle: DbHandle) helper.ErrorCode {
     return sqlite.sqlite_close_handle_impl(handle);
