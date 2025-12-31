@@ -112,6 +112,17 @@ zp_error_code zp_sqlite_read_trades_by_year_and_broker(
     size_t* out_count
 );
 
+// Read all trades into a caller-provided array.
+// - out_trades: array with capacity out_cap (may be NULL if out_cap == 0)
+// - out_count: number of rows written (<= out_cap)
+// Rows are ordered by trade_datetime ASC, id ASC.
+zp_error_code zp_sqlite_read_all_trades(
+    zp_db_handle handle,
+    zp_trade* out_trades,
+    size_t out_cap,
+    size_t* out_count
+);
+
 zp_error_code zp_sqlite_close(zp_db_handle handle);
 
 int    zp_version_major(void);

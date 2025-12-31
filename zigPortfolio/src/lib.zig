@@ -146,6 +146,25 @@ pub export fn zp_sqlite_read_trades_by_year_and_broker(
     );
 }
 
+pub export fn zp_sqlite_read_all_trades(
+    handle: DbHandle,
+    out_trades: ?[*]trade.zp_trade,
+    out_cap: usize,
+    out_count: *usize,
+) helper.ErrorCode {
+    if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
+
+    // allow caller to query count with cap=0
+    if (out_cap == 0) {
+        out_count.* = 0;
+        return .ok;
+    }
+
+    if (out_trades == null) return .invalid_argument;
+
+    return sqlite.sqlite_read_all_trades(handle, out_trades.?, out_cap, out_count);
+}
+
 // C ABI: int zp_sqlite_close(zp_db_handle handle);
 pub export fn zp_sqlite_close(handle: DbHandle) helper.ErrorCode {
     return sqlite.sqlite_close_handle_impl(handle);

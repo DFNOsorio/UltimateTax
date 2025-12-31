@@ -48,6 +48,14 @@ const sql_read_by_year_and_broker: [:0]const u8 =
     \\ORDER BY trade_datetime ASC, id ASC;
 ;
 
+const sql_read_all: [:0]const u8 =
+    \\SELECT broker, trade_datetime, "type", ticker,
+    \\       quantity, price_per_share, commission,
+    \\       country, currency, conversion_rate_eur
+    \\FROM trades
+    \\ORDER BY trade_datetime ASC, id ASC;
+;
+
 pub fn sqlite_hello_impl() void {
     std.debug.print("Hello from sqliteConnector!\n", .{});
 }
@@ -417,6 +425,41 @@ pub fn sqlite_read_trades_by_year_and_broker(
     if (rc != c.SQLITE_OK) return .preparation_fail;
 
     return step_rows_into_array(stmt.?, out_trades, out_cap, out_count);
+}
+
+pub fn sqlite_read_all_trades(
+    handle: DbHandle,
+    out_trades: [*]trade.zp_trade,
+    out_cap: usize,
+    out_count: *usize,
+) helper.ErrorCode {
+    out_count.* = 0;
+
+    const db_ptr: *c.sqlite3 = @ptrFromInt(handle);
+    var stmt: ?*c.sqlite3_stmt = null;
+
+    const rc_prep: c_int = c.sqlite3_prepare_v2(db_ptr, sql_read_all.ptr, -1, &stmt, null);
+    if (rc_prep != c.SQLITE_OK or stmt == null) return .preparation_fail;
+    defer _ = c.sqlite3_finalize(stmt.?);
+
+    var idx: usize = 0;
+    while (true) {
+        const rc_step: c_int = c.sqlite3_step(stmt.?);
+
+        if (rc_step == c.SQLITE_ROW) {
+            if (idx >= out_cap) break; // truncate safely
+            stmt_to_trade(stmt.?, &out_trades[idx]);
+            idx += 1;
+            continue;
+        }
+
+        if (rc_step == c.SQLITE_DONE) break;
+
+        return .read_row_fail;
+    }
+
+    out_count.* = idx;
+    return .ok;
 }
 
 /// Close a DB given an opaque handle.
