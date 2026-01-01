@@ -1,6 +1,7 @@
 const std = @import("std");
 
 pub const sqlite = @import("sqliteConnector.zig");
+pub const meta = @import("sqliteMeta.zig");
 pub const helper = @import("helper.zig");
 pub const trade = @import("trade.zig");
 
@@ -9,10 +10,7 @@ const pkgmeta = @import("pkgmeta");
 
 const DbHandle = helper.DbHandle;
 
-// Re-export for external users (and tests)
-pub const zp_trade = trade.zp_trade;
-
-// C ABI: int zp_sqlite_open(const char *path, zp_db_handle *out_handle);
+// C ABI: zp_error_code zp_sqlite_open(const char *path, zp_db_handle *out_handle);
 pub export fn zp_sqlite_open(
     path: [*:0]const u8,
     out_handle: *DbHandle,
@@ -20,7 +18,6 @@ pub export fn zp_sqlite_open(
     return sqlite.sqlite_open_handle_impl(path, out_handle);
 }
 
-/// C ABI: scalar-args insert (kept for convenience/backward compatibility)
 pub export fn zp_sqlite_insert_trade(
     handle: DbHandle,
     trade_datetime: ?[*:0]const u8,
@@ -52,7 +49,6 @@ pub export fn zp_sqlite_insert_trade(
     );
 }
 
-/// C ABI: struct-based insert (uses zp_trade inline buffers)
 pub export fn zp_sqlite_insert_trade_struct(
     handle: DbHandle,
     t: ?*const trade.zp_trade,
@@ -60,13 +56,9 @@ pub export fn zp_sqlite_insert_trade_struct(
     if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
     if (t == null) return .invalid_argument;
 
-    // Required inline strings must be non-empty
-    if (t.?.trade_datetime[0] == 0 or t.?.ticker[0] == 0) return .invalid_argument;
-
     return sqlite.sqlite_insert_trade_struct(handle, t.?);
 }
 
-/// C ABI: read a trade by id into a caller-provided zp_trade.
 pub export fn zp_sqlite_read_trade_by_id(
     handle: DbHandle,
     id: u32,
@@ -78,7 +70,6 @@ pub export fn zp_sqlite_read_trade_by_id(
     return sqlite.sqlite_read_trade_by_id(handle, id, out_trade.?);
 }
 
-/// C ABI: read trades for a year into caller-provided array.
 pub export fn zp_sqlite_read_trades_by_year(
     handle: DbHandle,
     year: u32,
@@ -87,36 +78,23 @@ pub export fn zp_sqlite_read_trades_by_year(
     out_count: ?*usize,
 ) helper.ErrorCode {
     if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
-    if (out_trades == null or out_count == null) return .invalid_argument;
+    if (out_count == null) return .invalid_argument;
 
-    return sqlite.sqlite_read_trades_by_year(handle, year, out_trades.?, out_cap, out_count.?);
+    return sqlite.sqlite_read_trades_by_year(handle, year, out_trades, out_cap, out_count.?);
 }
 
 pub export fn zp_sqlite_read_trades_by_broker(
     handle: DbHandle,
     broker: ?[*:0]const u8,
     out_trades: ?[*]trade.zp_trade,
-    capacity: usize,
-    out_count: *usize,
+    out_cap: usize,
+    out_count: ?*usize,
 ) helper.ErrorCode {
     if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
-    if (out_count.* != out_count.*) {} // no-op; keeps some linters quiet (optional)
-
-    out_count.* = 0;
-
     if (broker == null) return .invalid_argument;
-    if (broker.?[0] == 0) return .invalid_argument;
+    if (out_count == null) return .invalid_argument;
 
-    if (capacity == 0) return .ok;
-    if (out_trades == null) return .invalid_argument;
-
-    return sqlite.sqlite_read_trades_by_broker(
-        handle,
-        broker.?,
-        out_trades.?,
-        capacity,
-        out_count,
-    );
+    return sqlite.sqlite_read_trades_by_broker(handle, broker.?, out_trades, out_cap, out_count.?);
 }
 
 pub export fn zp_sqlite_read_trades_by_year_and_broker(
@@ -124,53 +102,56 @@ pub export fn zp_sqlite_read_trades_by_year_and_broker(
     year: u32,
     broker: ?[*:0]const u8,
     out_trades: ?[*]trade.zp_trade,
-    capacity: usize,
-    out_count: *usize,
+    out_cap: usize,
+    out_count: ?*usize,
 ) helper.ErrorCode {
     if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
-    out_count.* = 0;
-
     if (broker == null) return .invalid_argument;
-    if (broker.?[0] == 0) return .invalid_argument;
+    if (out_count == null) return .invalid_argument;
 
-    if (capacity == 0) return .ok;
-    if (out_trades == null) return .invalid_argument;
-
-    return sqlite.sqlite_read_trades_by_year_and_broker(
-        handle,
-        year,
-        broker.?,
-        out_trades.?,
-        capacity,
-        out_count,
-    );
+    return sqlite.sqlite_read_trades_by_year_and_broker(handle, year, broker.?, out_trades, out_cap, out_count.?);
 }
 
 pub export fn zp_sqlite_read_all_trades(
     handle: DbHandle,
     out_trades: ?[*]trade.zp_trade,
     out_cap: usize,
-    out_count: *usize,
+    out_count: ?*usize,
 ) helper.ErrorCode {
     if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
+    if (out_count == null) return .invalid_argument;
 
-    // allow caller to query count with cap=0
-    if (out_cap == 0) {
-        out_count.* = 0;
-        return .ok;
-    }
-
-    if (out_trades == null) return .invalid_argument;
-
-    return sqlite.sqlite_read_all_trades(handle, out_trades.?, out_cap, out_count);
+    return sqlite.sqlite_read_all_trades(handle, out_trades, out_cap, out_count.?);
 }
 
-// C ABI: int zp_sqlite_close(zp_db_handle handle);
+pub export fn zp_sqlite_get_unique_brokers(
+    handle: DbHandle,
+    out_brokers: ?[*]trade.zp_broker_name,
+    out_cap: usize,
+    out_count: ?*usize,
+) helper.ErrorCode {
+    if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
+    if (out_count == null) return .invalid_argument;
+
+    return meta.sqlite_get_unique_brokers(handle, out_brokers, out_cap, out_count.?);
+}
+
+pub export fn zp_sqlite_get_unique_years(
+    handle: DbHandle,
+    out_years: ?[*]u32,
+    out_cap: usize,
+    out_count: ?*usize,
+) helper.ErrorCode {
+    if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
+    if (out_count == null) return .invalid_argument;
+
+    return meta.sqlite_get_unique_years(handle, out_years, out_cap, out_count.?);
+}
+
+// C ABI: zp_error_code zp_sqlite_close(zp_db_handle handle);
 pub export fn zp_sqlite_close(handle: DbHandle) helper.ErrorCode {
     return sqlite.sqlite_close_handle_impl(handle);
 }
-
-// ---------------- Version parsing (unchanged) ----------------
 
 pub const Version = struct {
     major: u8 = 0,
@@ -182,11 +163,7 @@ pub const Version = struct {
     }
 
     pub fn format(self: Version, writer: anytype) !void {
-        try writer.print("{d}.{d}.{d}", .{
-            self.major,
-            self.minor,
-            self.patch,
-        });
+        try writer.print("{d}.{d}.{d}", .{ self.major, self.minor, self.patch });
     }
 };
 
@@ -201,11 +178,11 @@ fn parseVersionFromZon(contents: []const u8) Version {
         const line = std.mem.trim(u8, raw_line, " \t\r\n");
         if (!std.mem.startsWith(u8, line, ".version")) continue;
 
+        // Expect: .version = "0.0.1",
         const eq_pos = std.mem.indexOfScalar(u8, line, '=') orelse break;
         const after_eq = std.mem.trim(u8, line[eq_pos + 1 ..], " \t,");
 
-        if (after_eq.len < 2 or after_eq[0] != '"' or after_eq[after_eq.len - 1] != '"')
-            break;
+        if (after_eq.len < 2 or after_eq[0] != '"' or after_eq[after_eq.len - 1] != '"') break;
 
         const ver_str = after_eq[1 .. after_eq.len - 1];
 
@@ -213,7 +190,7 @@ fn parseVersionFromZon(contents: []const u8) Version {
 
         if (parts.next()) |a| major = std.fmt.parseUnsigned(u8, a, 10) catch 0;
         if (parts.next()) |b| minor = std.fmt.parseUnsigned(u8, b, 10) catch 0;
-        if (parts.next()) |c| patch = std.fmt.parseUnsigned(u8, c, 10) catch 0;
+        if (parts.next()) |cpart| patch = std.fmt.parseUnsigned(u8, cpart, 10) catch 0;
 
         break;
     }
@@ -230,11 +207,9 @@ pub fn getVersion() Version {
 export fn zp_version_major() c_int {
     return @as(c_int, BUILD_VERSION.major);
 }
-
 export fn zp_version_minor() c_int {
     return @as(c_int, BUILD_VERSION.minor);
 }
-
 export fn zp_version_patch() c_int {
     return @as(c_int, BUILD_VERSION.patch);
 }
