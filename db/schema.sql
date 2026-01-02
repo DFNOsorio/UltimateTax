@@ -49,5 +49,75 @@ CREATE INDEX idx_trades_datetime
 CREATE INDEX idx_trades_ticker_datetime
     ON trades(ticker, trade_datetime);
 
+CREATE INDEX IF NOT EXISTS idx_trades_broker_ticker_datetime
+    ON trades(broker, ticker, trade_datetime, id);
 
--- ADD VIRTUAL COLUMNS IN THE FUTURE
+-- Drop existing table if we are recreating the DB
+DROP TABLE IF EXISTS fifo_snapshot;
+
+CREATE TABLE fifo_snapshot (
+    lot_id              INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    broker              TEXT NOT NULL,
+    tax_year            INTEGER NOT NULL,          -- snapshot as-of end of this year
+    ticker              TEXT NOT NULL,
+
+    acq_trade_id        INTEGER NOT NULL,
+    acq_datetime        TEXT NOT NULL,
+
+    qty_remaining       REAL NOT NULL CHECK (qty_remaining >= 0.0),
+
+    cost_per_share_eur  REAL NOT NULL CHECK (cost_per_share_eur >= 0.0),
+
+    acq_commission_eur  REAL NOT NULL DEFAULT 0.0 CHECK (acq_commission_eur >= 0.0),
+
+    country             TEXT NOT NULL,
+
+    FOREIGN KEY (acq_trade_id) REFERENCES trades(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_fifo_snapshot_broker_year_ticker
+ON fifo_snapshot(broker, tax_year, ticker, acq_datetime, lot_id);
+
+CREATE INDEX IF NOT EXISTS idx_fifo_snapshot_acq_trade
+ON fifo_snapshot(acq_trade_id);
+
+
+
+DROP TABLE IF EXISTS fifo_realized;
+
+CREATE TABLE fifo_realized (
+    operation_id        INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    broker              TEXT NOT NULL,
+    tax_year            INTEGER NOT NULL,          -- generally the SELL year
+    ticker              TEXT NOT NULL,
+
+    sell_trade_id       INTEGER NOT NULL,
+    buy_trade_id        INTEGER NOT NULL,
+
+    match_seq           INTEGER NOT NULL,          -- 1..N matches per sell
+
+    sell_datetime       TEXT NOT NULL,
+    buy_datetime        TEXT NOT NULL,
+
+    qty_matched         REAL NOT NULL CHECK (qty_matched > 0.0),
+
+    proceeds_eur        REAL NOT NULL,
+    cost_eur            REAL NOT NULL,
+    gain_eur            REAL NOT NULL,
+
+    FOREIGN KEY (sell_trade_id) REFERENCES trades(id),
+    FOREIGN KEY (buy_trade_id)  REFERENCES trades(id),
+
+    UNIQUE (sell_trade_id, match_seq)
+);
+
+CREATE INDEX IF NOT EXISTS idx_fifo_realized_broker_year
+ON fifo_realized(broker, tax_year);
+
+CREATE INDEX IF NOT EXISTS idx_fifo_realized_broker_year_ticker
+ON fifo_realized(broker, tax_year, ticker, sell_datetime, operation_id);
+
+CREATE INDEX IF NOT EXISTS idx_fifo_realized_sell_trade
+ON fifo_realized(sell_trade_id);

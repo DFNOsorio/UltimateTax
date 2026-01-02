@@ -2,67 +2,25 @@ const std = @import("std");
 const helper = @import("helper.zig");
 const trade = @import("trade.zig");
 
+const insert = @import("insertTrades.zig");
+const read = @import("readTrades.zig");
+const meta = @import("sqliteMeta.zig");
+
+// Expose sqlite3 C API for tests: tests do `const c = api.sqlite.c;`
 pub const c = @cImport({
     @cInclude("sqlite3.h");
 });
 
+// Options module passed from build.zig
+const pkgmeta = @import("pkgmeta");
+
 const DbHandle = helper.DbHandle;
 
-const sql_insertion_query: [:0]const u8 =
-    "INSERT INTO trades (broker, trade_datetime, type, ticker, quantity, price_per_share, commission, country, currency, conversion_rate_eur) " ++
-    "VALUES (COALESCE(?1, 'IKBR'), ?2, COALESCE(?3, 'BUY'), ?4, ?5, ?6, COALESCE(?7, 0.0), COALESCE(?8, 'US'), COALESCE(?9, 'USD'), COALESCE(?10, 1.0));";
+// ------------------------------------------------------------
+// Internal helpers (handle open/close)
+// ------------------------------------------------------------
 
-const sql_read_by_id: [:0]const u8 =
-    \\SELECT broker, trade_datetime, "type", ticker,
-    \\       quantity, price_per_share, commission,
-    \\       country, currency, conversion_rate_eur
-    \\FROM trades
-    \\WHERE id = ?1
-    \\LIMIT 1;
-;
-
-const sql_read_by_year: [:0]const u8 =
-    \\SELECT broker, trade_datetime, "type", ticker,
-    \\       quantity, price_per_share, commission,
-    \\       country, currency, conversion_rate_eur
-    \\FROM trades
-    \\WHERE substr(trade_datetime, 1, 4) = ?1
-    \\ORDER BY trade_datetime ASC, id ASC;
-;
-
-const sql_read_by_broker: [:0]const u8 =
-    \\SELECT broker, trade_datetime, "type", ticker,
-    \\       quantity, price_per_share, commission,
-    \\       country, currency, conversion_rate_eur
-    \\FROM trades
-    \\WHERE broker = ?1
-    \\ORDER BY trade_datetime ASC, id ASC;
-;
-
-const sql_read_by_year_and_broker: [:0]const u8 =
-    \\SELECT broker, trade_datetime, "type", ticker,
-    \\       quantity, price_per_share, commission,
-    \\       country, currency, conversion_rate_eur
-    \\FROM trades
-    \\WHERE substr(trade_datetime, 1, 4) = ?1
-    \\  AND broker = ?2
-    \\ORDER BY trade_datetime ASC, id ASC;
-;
-
-const sql_read_all: [:0]const u8 =
-    \\SELECT broker, trade_datetime, "type", ticker,
-    \\       quantity, price_per_share, commission,
-    \\       country, currency, conversion_rate_eur
-    \\FROM trades
-    \\ORDER BY trade_datetime ASC, id ASC;
-;
-
-pub fn sqlite_hello_impl() void {
-    std.debug.print("Hello from sqliteConnector!\n", .{});
-}
-
-/// Open a DB and return an opaque handle (pointer-as-handle internally).
-pub fn sqlite_open_handle_impl(path: [*:0]const u8, out_handle: *DbHandle) helper.ErrorCode {
+fn sqlite_open_handle_impl(path: [*:0]const u8, out_handle: *DbHandle) helper.ErrorCode {
     var db: ?*c.sqlite3 = null;
     const rc = c.sqlite3_open(path, &db);
     if (rc != c.SQLITE_OK or db == null) {
@@ -74,68 +32,32 @@ pub fn sqlite_open_handle_impl(path: [*:0]const u8, out_handle: *DbHandle) helpe
     return .ok;
 }
 
-fn bind_text(stmt: *c.sqlite3_stmt, position: c_int, text: [*:0]const u8) helper.ErrorCode {
-    const rc: c_int = c.sqlite3_bind_text(stmt, position, text, -1, c.SQLITE_TRANSIENT);
-    return if (rc == c.SQLITE_OK) .ok else .insertion_error;
+fn sqlite_close_handle_impl(handle: DbHandle) helper.ErrorCode {
+    if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
+
+    const db_ptr: *c.sqlite3 = @ptrFromInt(handle);
+    const rc = c.sqlite3_close(db_ptr);
+    if (rc != c.SQLITE_OK) return .close_fail;
+
+    return .ok;
 }
 
-fn bind_real(stmt: *c.sqlite3_stmt, position: c_int, value: f64) helper.ErrorCode {
-    const rc: c_int = c.sqlite3_bind_double(stmt, position, value);
-    return if (rc == c.SQLITE_OK) .ok else .insertion_error;
+// ------------------------------------------------------------
+// C ABI (moved from old lib.zig)
+// ------------------------------------------------------------
+
+// C ABI: zp_error_code zp_sqlite_open(const char *path, zp_db_handle *out_handle);
+pub export fn zp_sqlite_open(
+    path: [*:0]const u8,
+    out_handle: *DbHandle,
+) helper.ErrorCode {
+    return sqlite_open_handle_impl(path, out_handle);
 }
 
-fn bind_text_opt(stmt: *c.sqlite3_stmt, position: c_int, text: ?[*:0]const u8) helper.ErrorCode {
-    const rc: c_int = if (text) |t|
-        c.sqlite3_bind_text(stmt, position, t, -1, c.SQLITE_TRANSIENT)
-    else
-        c.sqlite3_bind_null(stmt, position);
-
-    return if (rc == c.SQLITE_OK) .ok else .insertion_error;
-}
-
-fn bind_real_opt(stmt: *c.sqlite3_stmt, position: c_int, value: ?f64) helper.ErrorCode {
-    const rc: c_int = if (value) |v|
-        c.sqlite3_bind_double(stmt, position, v)
-    else
-        c.sqlite3_bind_null(stmt, position);
-
-    return if (rc == c.SQLITE_OK) .ok else .insertion_error;
-}
-
-fn is_empty_cstr(buf: []const u8) bool {
-    return buf.len == 0 or buf[0] == 0;
-}
-
-fn cstr_ptr(buf: []const u8) [*:0]const u8 {
-    // Precondition: buf is NUL-terminated
-    return @ptrCast(buf.ptr);
-}
-
-fn bind_trade_text_defaultable(stmt: *c.sqlite3_stmt, pos: c_int, buf: []const u8) helper.ErrorCode {
-    // Empty inline string => use default => bind NULL so COALESCE fires
-    if (is_empty_cstr(buf)) return bind_text_opt(stmt, pos, null);
-    return bind_text(stmt, pos, cstr_ptr(buf));
-}
-
-fn bind_trade_text_required(stmt: *c.sqlite3_stmt, pos: c_int, buf: []const u8) helper.ErrorCode {
-    if (is_empty_cstr(buf)) return .invalid_argument;
-    return bind_text(stmt, pos, cstr_ptr(buf));
-}
-
-fn normalize_commission(v: f64) ?f64 {
-    if (!std.math.isFinite(v) or v < 0.0) return null;
-    return v;
-}
-
-fn normalize_conversion(v: f64) ?f64 {
-    if (!std.math.isFinite(v) or v <= 0.0) return null;
-    return v;
-}
-
-pub fn sqlite_insert_trade(
+pub export fn zp_sqlite_insert_trade(
     handle: DbHandle,
-    trade_datetime: [*:0]const u8,
-    ticker: [*:0]const u8,
+    trade_datetime: ?[*:0]const u8,
+    ticker: ?[*:0]const u8,
     quantity: f64,
     price_per_share: f64,
     broker: ?[*:0]const u8,
@@ -145,298 +67,201 @@ pub fn sqlite_insert_trade(
     currency: ?[*:0]const u8,
     conversion_rate_eur: f64,
 ) helper.ErrorCode {
-    const db_ptr: *c.sqlite3 = @ptrFromInt(handle);
-    var stmt: ?*c.sqlite3_stmt = null;
+    if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
+    if (trade_datetime == null or ticker == null) return .invalid_argument;
 
-    var rc: c_int = c.sqlite3_prepare_v2(db_ptr, sql_insertion_query.ptr, -1, &stmt, null);
-    if (rc != c.SQLITE_OK or stmt == null) return .preparation_fail;
-
-    defer _ = c.sqlite3_finalize(stmt.?);
-    const s = stmt.?;
-
-    const comm_opt: ?f64 = normalize_commission(commission);
-    const conv_opt: ?f64 = normalize_conversion(conversion_rate_eur);
-
-    var rcc: helper.ErrorCode = bind_text_opt(s, 1, broker);
-    if (rcc != .ok) return rcc;
-
-    rcc = bind_text(s, 2, trade_datetime);
-    if (rcc != .ok) return rcc;
-
-    rcc = bind_text_opt(s, 3, trade_type);
-    if (rcc != .ok) return rcc;
-
-    rcc = bind_text(s, 4, ticker);
-    if (rcc != .ok) return rcc;
-
-    rcc = bind_real(s, 5, quantity);
-    if (rcc != .ok) return rcc;
-
-    rcc = bind_real(s, 6, price_per_share);
-    if (rcc != .ok) return rcc;
-
-    rcc = bind_real_opt(s, 7, comm_opt);
-    if (rcc != .ok) return rcc;
-
-    rcc = bind_text_opt(s, 8, country);
-    if (rcc != .ok) return rcc;
-
-    rcc = bind_text_opt(s, 9, currency);
-    if (rcc != .ok) return rcc;
-
-    rcc = bind_real_opt(s, 10, conv_opt);
-    if (rcc != .ok) return rcc;
-
-    rc = c.sqlite3_step(s);
-    if (rc != c.SQLITE_DONE) return .execution_fail;
-
-    return .ok;
+    return insert.sqlite_insert_trade(
+        handle,
+        trade_datetime.?,
+        ticker.?,
+        quantity,
+        price_per_share,
+        broker,
+        trade_type,
+        commission,
+        country,
+        currency,
+        conversion_rate_eur,
+    );
 }
 
-/// Struct-based insert (the struct uses inline buffers).
-pub fn sqlite_insert_trade_struct(
+pub export fn zp_sqlite_insert_trade_struct(
     handle: DbHandle,
-    t: *const trade.zp_trade,
+    t: ?*const trade.zp_trade,
 ) helper.ErrorCode {
-    const db_ptr: *c.sqlite3 = @ptrFromInt(handle);
-    var stmt: ?*c.sqlite3_stmt = null;
+    if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
+    if (t == null) return .invalid_argument;
 
-    var rc: c_int = c.sqlite3_prepare_v2(db_ptr, sql_insertion_query.ptr, -1, &stmt, null);
-    if (rc != c.SQLITE_OK or stmt == null) return .preparation_fail;
-    defer _ = c.sqlite3_finalize(stmt.?);
-    const s = stmt.?;
-
-    // Required
-    var rcc = bind_trade_text_required(s, 2, t.trade_datetime[0..]);
-    if (rcc != .ok) return rcc;
-
-    rcc = bind_trade_text_required(s, 4, t.ticker[0..]);
-    if (rcc != .ok) return rcc;
-
-    // Required numerics
-    rcc = bind_real(s, 5, t.quantity);
-    if (rcc != .ok) return rcc;
-
-    rcc = bind_real(s, 6, t.price_per_share);
-    if (rcc != .ok) return rcc;
-
-    // Defaultables (bind NULL => COALESCE uses DB defaults)
-    rcc = bind_trade_text_defaultable(s, 1, t.broker[0..]);
-    if (rcc != .ok) return rcc;
-
-    rcc = bind_trade_text_defaultable(s, 3, t.trade_type[0..]);
-    if (rcc != .ok) return rcc;
-
-    rcc = bind_real_opt(s, 7, normalize_commission(t.commission));
-    if (rcc != .ok) return rcc;
-
-    rcc = bind_trade_text_defaultable(s, 8, t.country[0..]);
-    if (rcc != .ok) return rcc;
-
-    rcc = bind_trade_text_defaultable(s, 9, t.currency[0..]);
-    if (rcc != .ok) return rcc;
-
-    rcc = bind_real_opt(s, 10, normalize_conversion(t.conversion_rate_eur));
-    if (rcc != .ok) return rcc;
-
-    rc = c.sqlite3_step(s);
-    if (rc != c.SQLITE_DONE) return .execution_fail;
-
-    return .ok;
+    return insert.sqlite_insert_trade_struct(handle, t.?);
 }
 
-fn copy_col_text_into(buf: []u8, stmt: *c.sqlite3_stmt, col: c_int) void {
-    @memset(buf, 0);
-
-    const p = c.sqlite3_column_text(stmt, col);
-    if (p == null) return;
-
-    const n_bytes: usize = @intCast(c.sqlite3_column_bytes(stmt, col));
-    const src: [*]const u8 = @ptrCast(p.?);
-
-    if (buf.len == 0) return;
-
-    const to_copy = @min(n_bytes, buf.len - 1);
-    std.mem.copyForwards(u8, buf[0..to_copy], src[0..to_copy]);
-    buf[to_copy] = 0;
-}
-
-fn stmt_to_trade(stmt: *c.sqlite3_stmt, out: *trade.zp_trade) void {
-    copy_col_text_into(out.broker[0..], stmt, 0);
-    copy_col_text_into(out.trade_datetime[0..], stmt, 1);
-    copy_col_text_into(out.trade_type[0..], stmt, 2);
-    copy_col_text_into(out.ticker[0..], stmt, 3);
-
-    out.quantity = c.sqlite3_column_double(stmt, 4);
-    out.price_per_share = c.sqlite3_column_double(stmt, 5);
-    out.commission = c.sqlite3_column_double(stmt, 6);
-
-    copy_col_text_into(out.country[0..], stmt, 7);
-    copy_col_text_into(out.currency[0..], stmt, 8);
-
-    out.conversion_rate_eur = c.sqlite3_column_double(stmt, 9);
-}
-
-fn read_trades_loop(
-    stmt: *c.sqlite3_stmt,
-    out_trades: ?[*]trade.zp_trade,
-    out_cap: usize,
-    out_count: *usize,
-) helper.ErrorCode {
-    out_count.* = 0;
-
-    var idx: usize = 0;
-    while (true) {
-        const rc: c_int = c.sqlite3_step(stmt);
-        if (rc == c.SQLITE_ROW) {
-            if (out_trades) |buf| {
-                if (idx >= out_cap) {
-                    out_count.* = idx;
-                    return .ok; // truncated safely
-                }
-                stmt_to_trade(stmt, &buf[idx]);
-            }
-            idx += 1;
-            continue;
-        } else if (rc == c.SQLITE_DONE) {
-            out_count.* = idx;
-            return .ok;
-        } else {
-            return .read_row_fail;
-        }
-    }
-}
-
-/// Read exactly one trade by DB id.
-/// Returns:
-/// - .ok if found and written
-/// - .execution_fail if not found
-/// - .read_row_fail if sqlite reported an error executing the query
-pub fn sqlite_read_trade_by_id(
+pub export fn zp_sqlite_read_trade_by_id(
     handle: DbHandle,
     id: u32,
-    out_trade: *trade.zp_trade,
+    out_trade: ?*trade.zp_trade,
 ) helper.ErrorCode {
-    const db_ptr: *c.sqlite3 = @ptrFromInt(handle);
-    var stmt: ?*c.sqlite3_stmt = null;
-
-    const rc_prep: c_int = c.sqlite3_prepare_v2(db_ptr, sql_read_by_id.ptr, -1, &stmt, null);
-    if (rc_prep != c.SQLITE_OK or stmt == null) return .preparation_fail;
-    defer _ = c.sqlite3_finalize(stmt.?);
-
-    const rc_bind: c_int = c.sqlite3_bind_int(stmt.?, 1, @as(c_int, @intCast(id)));
-    if (rc_bind != c.SQLITE_OK) return .preparation_fail;
-
-    const rc_step: c_int = c.sqlite3_step(stmt.?);
-    if (rc_step == c.SQLITE_ROW) {
-        stmt_to_trade(stmt.?, out_trade);
-        return .ok;
-    } else if (rc_step == c.SQLITE_DONE) {
-        return .execution_fail; // not found
-    } else {
-        return .read_row_fail;
-    }
-}
-
-/// Read all trades for a given year.
-/// If out_trades == null and out_cap == 0, returns the required count in out_count.
-/// Otherwise, writes up to out_cap trades and sets out_count to the number written.
-pub fn sqlite_read_trades_by_year(
-    handle: DbHandle,
-    year: u32,
-    out_trades: ?[*]trade.zp_trade,
-    out_cap: usize,
-    out_count: *usize,
-) helper.ErrorCode {
-    const db_ptr: *c.sqlite3 = @ptrFromInt(handle);
-    var stmt: ?*c.sqlite3_stmt = null;
-
-    const rc_prep: c_int = c.sqlite3_prepare_v2(db_ptr, sql_read_by_year.ptr, -1, &stmt, null);
-    if (rc_prep != c.SQLITE_OK or stmt == null) return .preparation_fail;
-    defer _ = c.sqlite3_finalize(stmt.?);
-
-    var year_buf: [5]u8 = undefined;
-    _ = std.fmt.bufPrintZ(&year_buf, "{d:0>4}", .{year}) catch return .invalid_argument;
-
-    const rc_bind: c_int = c.sqlite3_bind_text(stmt.?, 1, @ptrCast(year_buf[0..].ptr), -1, c.SQLITE_TRANSIENT);
-    if (rc_bind != c.SQLITE_OK) return .preparation_fail;
-
-    return read_trades_loop(stmt.?, out_trades, out_cap, out_count);
-}
-
-/// Read all trades for a given broker.
-pub fn sqlite_read_trades_by_broker(
-    handle: DbHandle,
-    broker: [*:0]const u8,
-    out_trades: ?[*]trade.zp_trade,
-    out_cap: usize,
-    out_count: *usize,
-) helper.ErrorCode {
-    const db_ptr: *c.sqlite3 = @ptrFromInt(handle);
-    var stmt: ?*c.sqlite3_stmt = null;
-
-    const rc_prep: c_int = c.sqlite3_prepare_v2(db_ptr, sql_read_by_broker.ptr, -1, &stmt, null);
-    if (rc_prep != c.SQLITE_OK or stmt == null) return .preparation_fail;
-    defer _ = c.sqlite3_finalize(stmt.?);
-
-    const rc_bind: c_int = c.sqlite3_bind_text(stmt.?, 1, broker, -1, c.SQLITE_TRANSIENT);
-    if (rc_bind != c.SQLITE_OK) return .preparation_fail;
-
-    return read_trades_loop(stmt.?, out_trades, out_cap, out_count);
-}
-
-/// Read all trades for a given year and broker.
-pub fn sqlite_read_trades_by_year_and_broker(
-    handle: DbHandle,
-    year: u32,
-    broker: [*:0]const u8,
-    out_trades: ?[*]trade.zp_trade,
-    out_cap: usize,
-    out_count: *usize,
-) helper.ErrorCode {
-    const db_ptr: *c.sqlite3 = @ptrFromInt(handle);
-    var stmt: ?*c.sqlite3_stmt = null;
-
-    const rc_prep: c_int = c.sqlite3_prepare_v2(db_ptr, sql_read_by_year_and_broker.ptr, -1, &stmt, null);
-    if (rc_prep != c.SQLITE_OK or stmt == null) return .preparation_fail;
-    defer _ = c.sqlite3_finalize(stmt.?);
-
-    var year_buf: [5]u8 = undefined;
-    _ = std.fmt.bufPrintZ(&year_buf, "{d:0>4}", .{year}) catch return .invalid_argument;
-
-    var rc_bind: c_int = c.sqlite3_bind_text(stmt.?, 1, @ptrCast(year_buf[0..].ptr), -1, c.SQLITE_TRANSIENT);
-    if (rc_bind != c.SQLITE_OK) return .preparation_fail;
-
-    rc_bind = c.sqlite3_bind_text(stmt.?, 2, broker, -1, c.SQLITE_TRANSIENT);
-    if (rc_bind != c.SQLITE_OK) return .preparation_fail;
-
-    return read_trades_loop(stmt.?, out_trades, out_cap, out_count);
-}
-
-/// Read all trades in the table.
-pub fn sqlite_read_all_trades(
-    handle: DbHandle,
-    out_trades: ?[*]trade.zp_trade,
-    out_cap: usize,
-    out_count: *usize,
-) helper.ErrorCode {
-    const db_ptr: *c.sqlite3 = @ptrFromInt(handle);
-    var stmt: ?*c.sqlite3_stmt = null;
-
-    const rc_prep: c_int = c.sqlite3_prepare_v2(db_ptr, sql_read_all.ptr, -1, &stmt, null);
-    if (rc_prep != c.SQLITE_OK or stmt == null) return .preparation_fail;
-    defer _ = c.sqlite3_finalize(stmt.?);
-
-    return read_trades_loop(stmt.?, out_trades, out_cap, out_count);
-}
-
-/// Close a DB given an opaque handle.
-pub fn sqlite_close_handle_impl(handle: DbHandle) helper.ErrorCode {
     if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
+    if (out_trade == null) return .invalid_argument;
 
-    const db_ptr: *c.sqlite3 = @ptrFromInt(handle);
-    const rc = c.sqlite3_close(db_ptr);
-    if (rc != c.SQLITE_OK) return .close_fail;
+    return read.sqlite_read_trade_by_id(handle, id, out_trade.?);
+}
 
-    return .ok;
+pub export fn zp_sqlite_read_trades_by_year(
+    handle: DbHandle,
+    year: u32,
+    out_trades: ?[*]trade.zp_trade,
+    out_cap: usize,
+    out_count: ?*usize,
+) helper.ErrorCode {
+    if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
+    if (out_count == null) return .invalid_argument;
+
+    return read.sqlite_read_trades_by_year(handle, year, out_trades, out_cap, out_count.?);
+}
+
+pub export fn zp_sqlite_read_trades_by_broker(
+    handle: DbHandle,
+    broker: ?[*:0]const u8,
+    out_trades: ?[*]trade.zp_trade,
+    out_cap: usize,
+    out_count: ?*usize,
+) helper.ErrorCode {
+    if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
+    if (broker == null) return .invalid_argument;
+    if (out_count == null) return .invalid_argument;
+
+    return read.sqlite_read_trades_by_broker(handle, broker.?, out_trades, out_cap, out_count.?);
+}
+
+pub export fn zp_sqlite_read_trades_by_year_and_broker(
+    handle: DbHandle,
+    year: u32,
+    broker: ?[*:0]const u8,
+    out_trades: ?[*]trade.zp_trade,
+    out_cap: usize,
+    out_count: ?*usize,
+) helper.ErrorCode {
+    if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
+    if (broker == null) return .invalid_argument;
+    if (out_count == null) return .invalid_argument;
+
+    return read.sqlite_read_trades_by_year_and_broker(handle, year, broker.?, out_trades, out_cap, out_count.?);
+}
+
+pub export fn zp_sqlite_read_all_trades(
+    handle: DbHandle,
+    out_trades: ?[*]trade.zp_trade,
+    out_cap: usize,
+    out_count: ?*usize,
+) helper.ErrorCode {
+    if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
+    if (out_count == null) return .invalid_argument;
+
+    return read.sqlite_read_all_trades(handle, out_trades, out_cap, out_count.?);
+}
+
+pub export fn zp_sqlite_get_unique_brokers(
+    handle: DbHandle,
+    out_brokers: ?[*]trade.zp_broker_name,
+    out_cap: usize,
+    out_count: ?*usize,
+) helper.ErrorCode {
+    if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
+    if (out_count == null) return .invalid_argument;
+
+    return meta.sqlite_get_unique_brokers(handle, out_brokers, out_cap, out_count.?);
+}
+
+pub export fn zp_sqlite_get_unique_years(
+    handle: DbHandle,
+    out_years: ?[*]u32,
+    out_cap: usize,
+    out_count: ?*usize,
+) helper.ErrorCode {
+    if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
+    if (out_count == null) return .invalid_argument;
+
+    return meta.sqlite_get_unique_years(handle, out_years, out_cap, out_count.?);
+}
+
+// C ABI: zp_error_code zp_sqlite_close(zp_db_handle handle);
+pub export fn zp_sqlite_close(handle: DbHandle) helper.ErrorCode {
+    return sqlite_close_handle_impl(handle);
+}
+
+// ------------------------------------------------------------
+// Version (moved from old lib.zig, matches header: writes into buffer)
+// ------------------------------------------------------------
+
+pub const Version = struct {
+    major: u8 = 0,
+    minor: u8 = 0,
+    patch: u8 = 0,
+
+    pub fn toInt(self: Version) u32 {
+        return (@as(u32, self.major) << 16) | (@as(u32, self.minor) << 8) | (@as(u32, self.patch));
+    }
+
+    pub fn format(self: Version, writer: anytype) !void {
+        try writer.print("{d}.{d}.{d}", .{ self.major, self.minor, self.patch });
+    }
+};
+
+fn parseVersionFromZon(contents: []const u8) Version {
+    var it = std.mem.splitScalar(u8, contents, '\n');
+
+    var major: u8 = 0;
+    var minor: u8 = 0;
+    var patch: u8 = 0;
+
+    while (it.next()) |raw_line| {
+        const line = std.mem.trim(u8, raw_line, " \t\r\n");
+        if (!std.mem.startsWith(u8, line, ".version")) continue;
+
+        // Expect: .version = "0.0.1",
+        const eq_pos = std.mem.indexOfScalar(u8, line, '=') orelse break;
+        const after_eq = std.mem.trim(u8, line[eq_pos + 1 ..], " \t,");
+
+        if (after_eq.len < 2 or after_eq[0] != '"' or after_eq[after_eq.len - 1] != '"') break;
+
+        const ver_str = after_eq[1 .. after_eq.len - 1];
+        var parts = std.mem.splitScalar(u8, ver_str, '.');
+
+        if (parts.next()) |a| major = std.fmt.parseUnsigned(u8, a, 10) catch 0;
+        if (parts.next()) |b| minor = std.fmt.parseUnsigned(u8, b, 10) catch 0;
+        if (parts.next()) |cpart| patch = std.fmt.parseUnsigned(u8, cpart, 10) catch 0;
+
+        break;
+    }
+
+    return .{ .major = major, .minor = minor, .patch = patch };
+}
+
+const BUILD_VERSION: Version = parseVersionFromZon(pkgmeta.build_zon);
+
+pub fn getVersion() Version {
+    return BUILD_VERSION;
+}
+
+pub export fn zp_version_major() c_int {
+    return @as(c_int, BUILD_VERSION.major);
+}
+pub export fn zp_version_minor() c_int {
+    return @as(c_int, BUILD_VERSION.minor);
+}
+pub export fn zp_version_patch() c_int {
+    return @as(c_int, BUILD_VERSION.patch);
+}
+
+// Header expects: size_t zp_version_string(char *buf, size_t buf_len);
+pub export fn zp_version_string(buf: [*]u8, buf_len: usize) usize {
+    if (buf_len == 0) return 0;
+
+    const slice = std.fmt.bufPrintZ(
+        buf[0..buf_len],
+        "{d}.{d}.{d}",
+        .{ BUILD_VERSION.major, BUILD_VERSION.minor, BUILD_VERSION.patch },
+    ) catch return 0;
+
+    return slice.len;
 }
