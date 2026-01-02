@@ -9,7 +9,7 @@ fn str(buf: []const u8) []const u8 {
 }
 
 test "read_trades_by_broker: returns only rows for the broker" {
-    common.vprint("RUNNING: read_trades_by_broker: returns only rows for the broker");
+    common.vprint("read_trades_by_broker: returns only rows for the broker");
 
     const handle = try common.openMemDb();
     defer _ = api.zp_sqlite_close(handle);
@@ -22,7 +22,7 @@ test "read_trades_by_broker: returns only rows for the broker" {
     try std.testing.expectEqual(helper.ErrorCode.ok, api.zp_sqlite_read_trades_by_broker(handle, "XTB".ptr, null, 0, &needed));
     try std.testing.expectEqual(@as(usize, 2), needed);
 
-    var buf: [8]api.trade.zp_trade = undefined;
+    var buf: [8]api.schema.zp_trade = undefined;
     var written: usize = 0;
     try std.testing.expectEqual(
         helper.ErrorCode.ok,

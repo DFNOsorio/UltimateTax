@@ -9,7 +9,7 @@ fn str(buf: []const u8) []const u8 {
 }
 
 test "read_trades_by_year_and_broker: filters by both" {
-    common.vprint("RUNNING: read_trades_by_year_and_broker: filters by both");
+    common.vprint("read_trades_by_year_and_broker: filters by both");
 
     const handle = try common.openMemDb();
     defer _ = api.zp_sqlite_close(handle);
@@ -26,7 +26,7 @@ test "read_trades_by_year_and_broker: filters by both" {
     );
     try std.testing.expectEqual(@as(usize, 2), needed);
 
-    var buf: [8]api.trade.zp_trade = undefined;
+    var buf: [8]api.schema.zp_trade = undefined;
     var written: usize = 0;
     try std.testing.expectEqual(
         helper.ErrorCode.ok,

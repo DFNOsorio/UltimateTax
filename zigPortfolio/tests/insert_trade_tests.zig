@@ -7,7 +7,7 @@ const c = sqlite.c;
 const common = @import("test_common.zig");
 
 test "insert_trade: valid insert round-trips values" {
-    common.vprint("RUNNING: insert_trade: valid insert round-trips values");
+    common.vprint("insert_trade: valid insert round-trips values");
 
     const dt: [:0]const u8 = "2025-12-27 10:00";
     const ticker_ge: [:0]const u8 = "GE";
@@ -39,13 +39,13 @@ test "insert_trade: valid insert round-trips values" {
 }
 
 test "insert_trade_struct: inserts using zp_trade buffers" {
-    common.vprint("RUNNING: insert_trade_struct: inserts using zp_trade buffers");
+    common.vprint("insert_trade_struct: inserts using zp_trade buffers");
 
     const handle = try common.openMemDb();
     defer _ = api.zp_sqlite_close(handle);
 
-    var t: api.trade.zp_trade = undefined;
-    api.trade.clearTrade(&t);
+    var t: api.schema.zp_trade = undefined;
+    api.schema.clearTrade(&t);
 
     common.setBufZ(t.trade_datetime[0..], "2025-12-27 09:00");
     common.setBufZ(t.ticker[0..], "AAPL");
@@ -67,7 +67,7 @@ test "insert_trade_struct: inserts using zp_trade buffers" {
 }
 
 test "insert_trade: invalid_argument when required fields are NULL" {
-    common.vprint("RUNNING: insert_trade: invalid_argument when required fields are NULL");
+    common.vprint("insert_trade: invalid_argument when required fields are NULL");
 
     const mem: [:0]const u8 = ":memory:";
     var handle: helper.DbHandle = helper.INVALID_DB_HANDLE;
@@ -110,7 +110,7 @@ test "insert_trade: invalid_argument when required fields are NULL" {
 }
 
 test "insert_trade: fails on invalid type CHECK constraint" {
-    common.vprint("RUNNING: insert_trade: fails on invalid type CHECK constraint");
+    common.vprint("insert_trade: fails on invalid type CHECK constraint");
 
     const handle = try common.openMemDb();
     defer _ = api.zp_sqlite_close(handle);
@@ -133,7 +133,7 @@ test "insert_trade: fails on invalid type CHECK constraint" {
 }
 
 test "insert_trade: defaults used when optional fields are NULL" {
-    common.vprint("RUNNING: insert_trade: defaults used when optional fields are NULL");
+    common.vprint("insert_trade: defaults used when optional fields are NULL");
 
     const handle = try common.openMemDb();
     defer _ = api.zp_sqlite_close(handle);

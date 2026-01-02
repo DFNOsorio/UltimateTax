@@ -1,7 +1,9 @@
 const std = @import("std");
 const helper = @import("helper.zig");
-const trade = @import("trade.zig");
+const schema = @import("schemaStructs.zig");
 
+const fifoSnapshot = @import("fifoSnapshot.zig");
+const fifoRealized = @import("fifoRealized.zig");
 const insert = @import("insertTrades.zig");
 const read = @import("readTrades.zig");
 const meta = @import("sqliteMeta.zig");
@@ -87,7 +89,7 @@ pub export fn zp_sqlite_insert_trade(
 
 pub export fn zp_sqlite_insert_trade_struct(
     handle: DbHandle,
-    t: ?*const trade.zp_trade,
+    t: ?*const schema.zp_trade,
 ) helper.ErrorCode {
     if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
     if (t == null) return .invalid_argument;
@@ -98,7 +100,7 @@ pub export fn zp_sqlite_insert_trade_struct(
 pub export fn zp_sqlite_read_trade_by_id(
     handle: DbHandle,
     id: u32,
-    out_trade: ?*trade.zp_trade,
+    out_trade: ?*schema.zp_trade,
 ) helper.ErrorCode {
     if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
     if (out_trade == null) return .invalid_argument;
@@ -109,7 +111,7 @@ pub export fn zp_sqlite_read_trade_by_id(
 pub export fn zp_sqlite_read_trades_by_year(
     handle: DbHandle,
     year: u32,
-    out_trades: ?[*]trade.zp_trade,
+    out_trades: ?[*]schema.zp_trade,
     out_cap: usize,
     out_count: ?*usize,
 ) helper.ErrorCode {
@@ -122,7 +124,7 @@ pub export fn zp_sqlite_read_trades_by_year(
 pub export fn zp_sqlite_read_trades_by_broker(
     handle: DbHandle,
     broker: ?[*:0]const u8,
-    out_trades: ?[*]trade.zp_trade,
+    out_trades: ?[*]schema.zp_trade,
     out_cap: usize,
     out_count: ?*usize,
 ) helper.ErrorCode {
@@ -137,7 +139,7 @@ pub export fn zp_sqlite_read_trades_by_year_and_broker(
     handle: DbHandle,
     year: u32,
     broker: ?[*:0]const u8,
-    out_trades: ?[*]trade.zp_trade,
+    out_trades: ?[*]schema.zp_trade,
     out_cap: usize,
     out_count: ?*usize,
 ) helper.ErrorCode {
@@ -150,7 +152,7 @@ pub export fn zp_sqlite_read_trades_by_year_and_broker(
 
 pub export fn zp_sqlite_read_all_trades(
     handle: DbHandle,
-    out_trades: ?[*]trade.zp_trade,
+    out_trades: ?[*]schema.zp_trade,
     out_cap: usize,
     out_count: ?*usize,
 ) helper.ErrorCode {
@@ -162,7 +164,7 @@ pub export fn zp_sqlite_read_all_trades(
 
 pub export fn zp_sqlite_get_unique_brokers(
     handle: DbHandle,
-    out_brokers: ?[*]trade.zp_broker_name,
+    out_brokers: ?[*]schema.zp_broker_name,
     out_cap: usize,
     out_count: ?*usize,
 ) helper.ErrorCode {
@@ -182,6 +184,136 @@ pub export fn zp_sqlite_get_unique_years(
     if (out_count == null) return .invalid_argument;
 
     return meta.sqlite_get_unique_years(handle, out_years, out_cap, out_count.?);
+}
+
+pub export fn zp_sqlite_insert_fifo_snapshot(
+    handle: helper.DbHandle,
+    row: ?*const schema.zp_fifo_snapshot,
+) helper.ErrorCode {
+    if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
+    if (row == null) return .invalid_argument;
+
+    return fifoSnapshot.sqlite_insert_fifo_snapshot(handle, row.?);
+}
+
+pub export fn zp_sqlite_read_fifo_snapshot_all(
+    handle: helper.DbHandle,
+    out_rows: ?[*]schema.zp_fifo_snapshot,
+    out_cap: usize,
+    out_count: ?*usize,
+) helper.ErrorCode {
+    if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
+    if (out_count == null) return .invalid_argument;
+
+    return fifoSnapshot.sqlite_read_fifo_snapshot_all(handle, out_rows, out_cap, out_count.?);
+}
+
+pub export fn zp_sqlite_read_fifo_snapshot_by_tax_year(
+    handle: helper.DbHandle,
+    tax_year: u32,
+    out_rows: ?[*]schema.zp_fifo_snapshot,
+    out_cap: usize,
+    out_count: ?*usize,
+) helper.ErrorCode {
+    if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
+    if (out_count == null) return .invalid_argument;
+
+    return fifoSnapshot.sqlite_read_fifo_snapshot_by_tax_year(handle, tax_year, out_rows, out_cap, out_count.?);
+}
+
+pub export fn zp_sqlite_read_fifo_snapshot_by_ticker_per_year(
+    handle: helper.DbHandle,
+    tax_year: u32,
+    ticker: ?[*:0]const u8,
+    out_rows: ?[*]schema.zp_fifo_snapshot,
+    out_cap: usize,
+    out_count: ?*usize,
+) helper.ErrorCode {
+    if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
+    if (ticker == null) return .invalid_argument;
+    if (out_count == null) return .invalid_argument;
+
+    return fifoSnapshot.sqlite_read_fifo_snapshot_by_ticker_per_year(handle, tax_year, ticker.?, out_rows, out_cap, out_count.?);
+}
+
+pub export fn zp_sqlite_read_fifo_snapshot_by_broker_per_year(
+    handle: helper.DbHandle,
+    tax_year: u32,
+    broker: ?[*:0]const u8,
+    out_rows: ?[*]schema.zp_fifo_snapshot,
+    out_cap: usize,
+    out_count: ?*usize,
+) helper.ErrorCode {
+    if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
+    if (broker == null) return .invalid_argument;
+    if (out_count == null) return .invalid_argument;
+
+    return fifoSnapshot.sqlite_read_fifo_snapshot_by_broker_per_year(handle, tax_year, broker.?, out_rows, out_cap, out_count.?);
+}
+
+pub export fn zp_sqlite_insert_fifo_realized(
+    handle: helper.DbHandle,
+    row: ?*const schema.zp_fifo_realized,
+) helper.ErrorCode {
+    if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
+    if (row == null) return .invalid_argument;
+
+    return fifoRealized.sqlite_insert_fifo_realized(handle, row.?);
+}
+
+pub export fn zp_sqlite_read_fifo_realized_all(
+    handle: helper.DbHandle,
+    out_rows: ?[*]schema.zp_fifo_realized,
+    out_cap: usize,
+    out_count: ?*usize,
+) helper.ErrorCode {
+    if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
+    if (out_count == null) return .invalid_argument;
+
+    return fifoRealized.sqlite_read_fifo_realized_all(handle, out_rows, out_cap, out_count.?);
+}
+
+pub export fn zp_sqlite_read_fifo_realized_by_tax_year(
+    handle: helper.DbHandle,
+    tax_year: u32,
+    out_rows: ?[*]schema.zp_fifo_realized,
+    out_cap: usize,
+    out_count: ?*usize,
+) helper.ErrorCode {
+    if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
+    if (out_count == null) return .invalid_argument;
+
+    return fifoRealized.sqlite_read_fifo_realized_by_tax_year(handle, tax_year, out_rows, out_cap, out_count.?);
+}
+
+pub export fn zp_sqlite_read_fifo_realized_by_ticker_per_year(
+    handle: helper.DbHandle,
+    tax_year: u32,
+    ticker: ?[*:0]const u8,
+    out_rows: ?[*]schema.zp_fifo_realized,
+    out_cap: usize,
+    out_count: ?*usize,
+) helper.ErrorCode {
+    if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
+    if (ticker == null) return .invalid_argument;
+    if (out_count == null) return .invalid_argument;
+
+    return fifoRealized.sqlite_read_fifo_realized_by_ticker_per_year(handle, tax_year, ticker.?, out_rows, out_cap, out_count.?);
+}
+
+pub export fn zp_sqlite_read_fifo_realized_by_broker_per_year(
+    handle: helper.DbHandle,
+    tax_year: u32,
+    broker: ?[*:0]const u8,
+    out_rows: ?[*]schema.zp_fifo_realized,
+    out_cap: usize,
+    out_count: ?*usize,
+) helper.ErrorCode {
+    if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
+    if (broker == null) return .invalid_argument;
+    if (out_count == null) return .invalid_argument;
+
+    return fifoRealized.sqlite_read_fifo_realized_by_broker_per_year(handle, tax_year, broker.?, out_rows, out_cap, out_count.?);
 }
 
 // C ABI: zp_error_code zp_sqlite_close(zp_db_handle handle);

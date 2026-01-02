@@ -1,0 +1,294 @@
+const std = @import("std");
+const helper = @import("helper.zig");
+const schema = @import("schemaStructs.zig");
+
+pub const c = @cImport({
+    @cInclude("sqlite3.h");
+});
+
+const DbHandle = helper.DbHandle;
+const Row = schema.zp_fifo_realized;
+
+fn cstr_required(buf: []const u8) ?[*:0]const u8 {
+    if (buf.len == 0 or buf[0] == 0) return null;
+    return @ptrCast(buf.ptr);
+}
+
+fn bind_text(stmt: *c.sqlite3_stmt, idx: c_int, s: [*:0]const u8) helper.ErrorCode {
+    const rc = c.sqlite3_bind_text(stmt, idx, s, -1, c.SQLITE_TRANSIENT);
+    return if (rc == c.SQLITE_OK) .ok else .preparation_fail;
+}
+
+fn bind_u32(stmt: *c.sqlite3_stmt, idx: c_int, v: u32) helper.ErrorCode {
+    const rc = c.sqlite3_bind_int(stmt, idx, @as(c_int, @intCast(v)));
+    return if (rc == c.SQLITE_OK) .ok else .preparation_fail;
+}
+
+fn bind_f64(stmt: *c.sqlite3_stmt, idx: c_int, v: f64) helper.ErrorCode {
+    const rc = c.sqlite3_bind_double(stmt, idx, v);
+    return if (rc == c.SQLITE_OK) .ok else .preparation_fail;
+}
+
+fn copy_col_text_into(dst: []u8, stmt: *c.sqlite3_stmt, col: c_int) void {
+    @memset(dst, 0);
+
+    const p = c.sqlite3_column_text(stmt, col);
+    if (p == null) return;
+
+    const n_bytes: usize = @intCast(c.sqlite3_column_bytes(stmt, col));
+    const src: [*]const u8 = @ptrCast(p.?);
+
+    if (dst.len == 0) return;
+    const to_copy = @min(n_bytes, dst.len - 1);
+    std.mem.copyForwards(u8, dst[0..to_copy], src[0..to_copy]);
+    dst[to_copy] = 0;
+}
+
+fn stmt_to_row(stmt: *c.sqlite3_stmt, out: *Row) void {
+    // Column order must match SELECTs below
+    out.operation_id = @as(u32, @intCast(c.sqlite3_column_int(stmt, 0)));
+
+    copy_col_text_into(out.broker[0..], stmt, 1);
+    out.tax_year = @as(u32, @intCast(c.sqlite3_column_int(stmt, 2)));
+    copy_col_text_into(out.ticker[0..], stmt, 3);
+
+    out.sell_trade_id = @as(u32, @intCast(c.sqlite3_column_int(stmt, 4)));
+    out.buy_trade_id = @as(u32, @intCast(c.sqlite3_column_int(stmt, 5)));
+    out.match_seq = @as(u32, @intCast(c.sqlite3_column_int(stmt, 6)));
+
+    copy_col_text_into(out.sell_datetime[0..], stmt, 7);
+    copy_col_text_into(out.buy_datetime[0..], stmt, 8);
+
+    out.qty_matched = c.sqlite3_column_double(stmt, 9);
+    out.proceeds_eur = c.sqlite3_column_double(stmt, 10);
+    out.cost_eur = c.sqlite3_column_double(stmt, 11);
+    out.gain_eur = c.sqlite3_column_double(stmt, 12);
+}
+
+fn read_loop(
+    stmt: *c.sqlite3_stmt,
+    out_rows: ?[*]Row,
+    out_cap: usize,
+    out_count: *usize,
+) helper.ErrorCode {
+    var idx: usize = 0;
+
+    while (true) {
+        const rc = c.sqlite3_step(stmt);
+        if (rc == c.SQLITE_ROW) {
+            if (out_rows) |buf| {
+                if (idx >= out_cap) {
+                    out_count.* = idx; // truncated safely
+                    return .ok;
+                }
+                stmt_to_row(stmt, &buf[idx]);
+            }
+            idx += 1;
+            continue;
+        }
+
+        if (rc == c.SQLITE_DONE) {
+            out_count.* = if (out_rows == null) idx else @min(idx, out_cap);
+            return .ok;
+        }
+
+        return .read_row_fail;
+    }
+}
+
+/// INSERT one fifo_realized row.
+pub fn sqlite_insert_fifo_realized(handle: DbHandle, row: *const Row) helper.ErrorCode {
+    if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
+
+    const broker = cstr_required(row.broker[0..]) orelse return .invalid_argument;
+    const ticker = cstr_required(row.ticker[0..]) orelse return .invalid_argument;
+    const sell_dt = cstr_required(row.sell_datetime[0..]) orelse return .invalid_argument;
+    const buy_dt = cstr_required(row.buy_datetime[0..]) orelse return .invalid_argument;
+
+    const db: *c.sqlite3 = @ptrFromInt(handle);
+
+    const sql: [:0]const u8 =
+        \\INSERT INTO fifo_realized
+        \\(broker, tax_year, ticker,
+        \\ sell_trade_id, buy_trade_id, match_seq,
+        \\ sell_datetime, buy_datetime,
+        \\ qty_matched, proceeds_eur, cost_eur, gain_eur)
+        \\VALUES
+        \\(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12);
+    ;
+
+    var stmt: ?*c.sqlite3_stmt = null;
+    const prep = c.sqlite3_prepare_v2(db, sql.ptr, -1, &stmt, null);
+    if (prep != c.SQLITE_OK or stmt == null) return .preparation_fail;
+    defer _ = c.sqlite3_finalize(stmt.?);
+
+    var ec: helper.ErrorCode = .ok;
+
+    ec = bind_text(stmt.?, 1, broker);
+    if (ec != .ok) return ec;
+    ec = bind_u32(stmt.?, 2, row.tax_year);
+    if (ec != .ok) return ec;
+    ec = bind_text(stmt.?, 3, ticker);
+    if (ec != .ok) return ec;
+
+    ec = bind_u32(stmt.?, 4, row.sell_trade_id);
+    if (ec != .ok) return ec;
+    ec = bind_u32(stmt.?, 5, row.buy_trade_id);
+    if (ec != .ok) return ec;
+    ec = bind_u32(stmt.?, 6, row.match_seq);
+    if (ec != .ok) return ec;
+
+    ec = bind_text(stmt.?, 7, sell_dt);
+    if (ec != .ok) return ec;
+    ec = bind_text(stmt.?, 8, buy_dt);
+    if (ec != .ok) return ec;
+
+    ec = bind_f64(stmt.?, 9, row.qty_matched);
+    if (ec != .ok) return ec;
+    ec = bind_f64(stmt.?, 10, row.proceeds_eur);
+    if (ec != .ok) return ec;
+    ec = bind_f64(stmt.?, 11, row.cost_eur);
+    if (ec != .ok) return ec;
+    ec = bind_f64(stmt.?, 12, row.gain_eur);
+    if (ec != .ok) return ec;
+
+    const step_rc = c.sqlite3_step(stmt.?);
+    if (step_rc != c.SQLITE_DONE) return .execution_fail;
+
+    return .ok;
+}
+
+pub fn sqlite_read_fifo_realized_all(
+    handle: DbHandle,
+    out_rows: ?[*]Row,
+    out_cap: usize,
+    out_count: *usize,
+) helper.ErrorCode {
+    if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
+    out_count.* = 0;
+
+    const db: *c.sqlite3 = @ptrFromInt(handle);
+
+    const sql: [:0]const u8 =
+        \\SELECT operation_id, broker, tax_year, ticker,
+        \\       sell_trade_id, buy_trade_id, match_seq,
+        \\       sell_datetime, buy_datetime,
+        \\       qty_matched, proceeds_eur, cost_eur, gain_eur
+        \\FROM fifo_realized
+        \\ORDER BY broker, tax_year, ticker, sell_datetime, operation_id;
+    ;
+
+    var stmt: ?*c.sqlite3_stmt = null;
+    const prep = c.sqlite3_prepare_v2(db, sql.ptr, -1, &stmt, null);
+    if (prep != c.SQLITE_OK or stmt == null) return .preparation_fail;
+    defer _ = c.sqlite3_finalize(stmt.?);
+
+    return read_loop(stmt.?, out_rows, out_cap, out_count);
+}
+
+pub fn sqlite_read_fifo_realized_by_tax_year(
+    handle: DbHandle,
+    tax_year: u32,
+    out_rows: ?[*]Row,
+    out_cap: usize,
+    out_count: *usize,
+) helper.ErrorCode {
+    if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
+    out_count.* = 0;
+
+    const db: *c.sqlite3 = @ptrFromInt(handle);
+
+    const sql: [:0]const u8 =
+        \\SELECT operation_id, broker, tax_year, ticker,
+        \\       sell_trade_id, buy_trade_id, match_seq,
+        \\       sell_datetime, buy_datetime,
+        \\       qty_matched, proceeds_eur, cost_eur, gain_eur
+        \\FROM fifo_realized
+        \\WHERE tax_year = ?1
+        \\ORDER BY broker, ticker, sell_datetime, operation_id;
+    ;
+
+    var stmt: ?*c.sqlite3_stmt = null;
+    const prep = c.sqlite3_prepare_v2(db, sql.ptr, -1, &stmt, null);
+    if (prep != c.SQLITE_OK or stmt == null) return .preparation_fail;
+    defer _ = c.sqlite3_finalize(stmt.?);
+
+    const ec = bind_u32(stmt.?, 1, tax_year);
+    if (ec != .ok) return ec;
+
+    return read_loop(stmt.?, out_rows, out_cap, out_count);
+}
+
+pub fn sqlite_read_fifo_realized_by_ticker_per_year(
+    handle: DbHandle,
+    tax_year: u32,
+    ticker: [*:0]const u8,
+    out_rows: ?[*]Row,
+    out_cap: usize,
+    out_count: *usize,
+) helper.ErrorCode {
+    if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
+    out_count.* = 0;
+
+    const db: *c.sqlite3 = @ptrFromInt(handle);
+
+    const sql: [:0]const u8 =
+        \\SELECT operation_id, broker, tax_year, ticker,
+        \\       sell_trade_id, buy_trade_id, match_seq,
+        \\       sell_datetime, buy_datetime,
+        \\       qty_matched, proceeds_eur, cost_eur, gain_eur
+        \\FROM fifo_realized
+        \\WHERE tax_year = ?1 AND ticker = ?2
+        \\ORDER BY broker, sell_datetime, operation_id;
+    ;
+
+    var stmt: ?*c.sqlite3_stmt = null;
+    const prep = c.sqlite3_prepare_v2(db, sql.ptr, -1, &stmt, null);
+    if (prep != c.SQLITE_OK or stmt == null) return .preparation_fail;
+    defer _ = c.sqlite3_finalize(stmt.?);
+
+    var ec = bind_u32(stmt.?, 1, tax_year);
+    if (ec != .ok) return ec;
+
+    ec = bind_text(stmt.?, 2, ticker);
+    if (ec != .ok) return ec;
+
+    return read_loop(stmt.?, out_rows, out_cap, out_count);
+}
+
+pub fn sqlite_read_fifo_realized_by_broker_per_year(
+    handle: DbHandle,
+    tax_year: u32,
+    broker: [*:0]const u8,
+    out_rows: ?[*]Row,
+    out_cap: usize,
+    out_count: *usize,
+) helper.ErrorCode {
+    if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
+    out_count.* = 0;
+
+    const db: *c.sqlite3 = @ptrFromInt(handle);
+
+    const sql: [:0]const u8 =
+        \\SELECT operation_id, broker, tax_year, ticker,
+        \\       sell_trade_id, buy_trade_id, match_seq,
+        \\       sell_datetime, buy_datetime,
+        \\       qty_matched, proceeds_eur, cost_eur, gain_eur
+        \\FROM fifo_realized
+        \\WHERE tax_year = ?1 AND broker = ?2
+        \\ORDER BY ticker, sell_datetime, operation_id;
+    ;
+
+    var stmt: ?*c.sqlite3_stmt = null;
+    const prep = c.sqlite3_prepare_v2(db, sql.ptr, -1, &stmt, null);
+    if (prep != c.SQLITE_OK or stmt == null) return .preparation_fail;
+    defer _ = c.sqlite3_finalize(stmt.?);
+
+    var ec = bind_u32(stmt.?, 1, tax_year);
+    if (ec != .ok) return ec;
+
+    ec = bind_text(stmt.?, 2, broker);
+    if (ec != .ok) return ec;
+
+    return read_loop(stmt.?, out_rows, out_cap, out_count);
+}

@@ -9,7 +9,7 @@ fn str(buf: []const u8) []const u8 {
 }
 
 test "read_trade_by_id: returns trade struct for existing row" {
-    common.vprint("RUNNING: read_trade_by_id: returns trade struct for existing row");
+    common.vprint("read_trade_by_id: returns trade struct for existing row");
 
     const handle = try common.openMemDb();
     defer _ = api.zp_sqlite_close(handle);
@@ -32,8 +32,8 @@ test "read_trade_by_id: returns trade struct for existing row" {
         ),
     );
 
-    var out: api.trade.zp_trade = undefined;
-    api.trade.clearTrade(&out);
+    var out: api.schema.zp_trade = undefined;
+    api.schema.clearTrade(&out);
 
     const rc = api.zp_sqlite_read_trade_by_id(handle, 1, &out);
     try std.testing.expectEqual(helper.ErrorCode.ok, rc);
@@ -46,13 +46,13 @@ test "read_trade_by_id: returns trade struct for existing row" {
 }
 
 test "read_trade_by_id: returns execution_fail when not found" {
-    common.vprint("RUNNING: read_trade_by_id: returns execution_fail when not found");
+    common.vprint("read_trade_by_id: returns execution_fail when not found");
 
     const handle = try common.openMemDb();
     defer _ = api.zp_sqlite_close(handle);
 
-    var out: api.trade.zp_trade = undefined;
-    api.trade.clearTrade(&out);
+    var out: api.schema.zp_trade = undefined;
+    api.schema.clearTrade(&out);
 
     const rc = api.zp_sqlite_read_trade_by_id(handle, 999, &out);
     try std.testing.expectEqual(helper.ErrorCode.execution_fail, rc);

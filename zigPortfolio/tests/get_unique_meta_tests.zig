@@ -9,7 +9,7 @@ fn str(buf: []const u8) []const u8 {
 }
 
 test "get_unique_brokers: returns distinct broker list" {
-    common.vprint("RUNNING: get_unique_brokers: returns distinct broker list");
+    common.vprint("get_unique_brokers: returns distinct broker list");
 
     const handle = try common.openMemDb();
     defer _ = api.zp_sqlite_close(handle);
@@ -23,7 +23,7 @@ test "get_unique_brokers: returns distinct broker list" {
     try std.testing.expectEqual(helper.ErrorCode.ok, rc_count);
     try std.testing.expectEqual(@as(usize, 3), needed);
 
-    var brokers: [8]api.trade.zp_broker_name = undefined;
+    var brokers: [8]api.schema.zp_broker_name = undefined;
     var written: usize = 0;
     const rc = api.zp_sqlite_get_unique_brokers(handle, brokers[0..].ptr, brokers.len, &written);
     try std.testing.expectEqual(helper.ErrorCode.ok, rc);
@@ -36,7 +36,7 @@ test "get_unique_brokers: returns distinct broker list" {
 }
 
 test "get_unique_years: returns distinct year list" {
-    common.vprint("RUNNING: get_unique_years: returns distinct year list");
+    common.vprint("get_unique_years: returns distinct year list");
 
     const handle = try common.openMemDb();
     defer _ = api.zp_sqlite_close(handle);
@@ -62,7 +62,7 @@ test "get_unique_years: returns distinct year list" {
 }
 
 test "get_unique_brokers: truncates safely when out_cap is too small" {
-    common.vprint("RUNNING: get_unique_brokers: truncates safely when out_cap is too small");
+    common.vprint("get_unique_brokers: truncates safely when out_cap is too small");
 
     const handle = try common.openMemDb();
     defer _ = api.zp_sqlite_close(handle);
@@ -70,7 +70,7 @@ test "get_unique_brokers: truncates safely when out_cap is too small" {
     _ = api.zp_sqlite_insert_trade(handle, "2024-01-01 10:00".ptr, "GE".ptr, 1, 1, "IKBR".ptr, "BUY".ptr, 0, "US".ptr, "USD".ptr, 1);
     _ = api.zp_sqlite_insert_trade(handle, "2024-02-01 10:00".ptr, "AAPL".ptr, 1, 1, "XTB".ptr, "SELL".ptr, 0, "US".ptr, "USD".ptr, 1);
 
-    var brokers: [1]api.trade.zp_broker_name = undefined;
+    var brokers: [1]api.schema.zp_broker_name = undefined;
     var written: usize = 0;
     const rc = api.zp_sqlite_get_unique_brokers(handle, brokers[0..].ptr, brokers.len, &written);
     try std.testing.expectEqual(helper.ErrorCode.ok, rc);
@@ -78,7 +78,7 @@ test "get_unique_brokers: truncates safely when out_cap is too small" {
 }
 
 test "get_unique_years: truncates safely when out_cap is too small" {
-    common.vprint("RUNNING: get_unique_years: truncates safely when out_cap is too small");
+    common.vprint("get_unique_years: truncates safely when out_cap is too small");
 
     const handle = try common.openMemDb();
     defer _ = api.zp_sqlite_close(handle);

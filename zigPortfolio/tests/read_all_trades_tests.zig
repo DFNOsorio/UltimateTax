@@ -9,7 +9,7 @@ fn str(buf: []const u8) []const u8 {
 }
 
 test "read_all_trades: returns all rows ordered by datetime" {
-    common.vprint("RUNNING: read_all_trades: returns all rows ordered by datetime");
+    common.vprint("read_all_trades: returns all rows ordered by datetime");
 
     const handle = try common.openMemDb();
     defer _ = api.zp_sqlite_close(handle);
@@ -22,7 +22,7 @@ test "read_all_trades: returns all rows ordered by datetime" {
     try std.testing.expectEqual(helper.ErrorCode.ok, api.zp_sqlite_read_all_trades(handle, null, 0, &needed));
     try std.testing.expectEqual(@as(usize, 3), needed);
 
-    var buf: [8]api.trade.zp_trade = undefined;
+    var buf: [8]api.schema.zp_trade = undefined;
     var written: usize = 0;
     try std.testing.expectEqual(helper.ErrorCode.ok, api.zp_sqlite_read_all_trades(handle, buf[0..].ptr, buf.len, &written));
     try std.testing.expectEqual(@as(usize, 3), written);

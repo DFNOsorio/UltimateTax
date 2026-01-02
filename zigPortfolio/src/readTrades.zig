@@ -1,6 +1,6 @@
 const std = @import("std");
 const helper = @import("helper.zig");
-const trade = @import("trade.zig");
+const trade = @import("schemaStructs.zig");
 
 pub const c = @cImport({
     @cInclude("sqlite3.h");

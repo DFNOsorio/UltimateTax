@@ -6,4 +6,6 @@ comptime {
     _ = @import("read_trades_by_year_and_broker_tests.zig");
     _ = @import("read_all_trades_tests.zig");
     _ = @import("get_unique_meta_tests.zig");
+    _ = @import("fifo_snapshot_tests.zig");
+    _ = @import("fifo_realized_tests.zig");
 }
