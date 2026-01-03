@@ -21,70 +21,85 @@ typedef enum {
     ZP_ERROR_READ_ROW_FAIL = 8,
 } zp_error_code;
 
-/* Fixed buffer sizes used by ABI structs (must match Zig). */
+static inline const char* zp_error_to_string(zp_error_code ec) {
+    switch (ec) {
+        case ZP_ERROR_OK: return "ZP_ERROR_OK";
+        case ZP_ERROR_INVALID_ARGUMENT: return "ZP_ERROR_INVALID_ARGUMENT";
+        case ZP_ERROR_INTERNAL_ERROR: return "ZP_ERROR_INTERNAL_ERROR";
+        case ZP_ERROR_OPEN_FAIL: return "ZP_ERROR_OPEN_FAIL";
+        case ZP_ERROR_CLOSE_FAIL: return "ZP_ERROR_CLOSE_FAIL";
+        case ZP_ERROR_PREPARATION_FAIL: return "ZP_ERROR_PREPARATION_FAIL";
+        case ZP_ERROR_INSERTION_ERROR: return "ZP_ERROR_INSERTION_ERROR";
+        case ZP_ERROR_EXECUTION_FAIL: return "ZP_ERROR_EXECUTION_FAIL";
+        case ZP_ERROR_READ_ROW_FAIL: return "ZP_ERROR_READ_ROW_FAIL";
+        default: return "ZP_ERROR_<unknown>";
+    }
+}
+
+/* Fixed buffer sizes used by ABI structs (MUST match schemaStructs.zig). */
 enum {
-    ZP_TRADE_DATETIME_CAP = 17, /* "YYYY-MM-DD HH:MM" + '\0' */
-    ZP_TRADE_TICKER_CAP   = 16,
-    ZP_TRADE_BROKER_CAP   = 8,
-    ZP_TRADE_TYPE_CAP     = 8,
-    ZP_TRADE_COUNTRY_CAP  = 8,
-    ZP_TRADE_CURRENCY_CAP = 8,
+    ZP_BROKER_LEN   = 64,
+    ZP_TICKER_LEN   = 32,
+    ZP_DATETIME_LEN = 32, /* "YYYY-MM-DD HH:MM" + '\0' */
+    ZP_TYPE_LEN     = 8,
+    ZP_COUNTRY_LEN  = 16,
+    ZP_CURRENCY_LEN = 8,
 };
 
 typedef struct zp_trade {
-    char   trade_datetime[ZP_TRADE_DATETIME_CAP]; /* required; non-empty */
-    char   ticker[ZP_TRADE_TICKER_CAP];           /* required; non-empty */
+    uint32_t id;                          /* output (AUTOINCREMENT / row id) */
 
-    double quantity;                              /* required */
-    double price_per_share;                       /* required */
+    char broker[ZP_BROKER_LEN];
+    char trade_datetime[ZP_DATETIME_LEN];
+    char trade_type[ZP_TYPE_LEN];
+    char ticker[ZP_TICKER_LEN];
 
-    char   broker[ZP_TRADE_BROKER_CAP];           /* empty => default "IKBR" */
-    char   trade_type[ZP_TRADE_TYPE_CAP];         /* empty => default "BUY" */
+    double quantity;
+    double price_per_share;
+    double commission;
 
-    double commission;                            /* NaN or <0 => default 0.0 */
-
-    char   country[ZP_TRADE_COUNTRY_CAP];         /* empty => default "US" */
-    char   currency[ZP_TRADE_CURRENCY_CAP];       /* empty => default "USD" */
-
-    double conversion_rate_eur;                   /* NaN or <=0 => default 1.0 */
+    char country[ZP_COUNTRY_LEN];
+    char currency[ZP_CURRENCY_LEN];
+    double conversion_rate_eur;
 } zp_trade;
 
+
 typedef struct zp_broker_name {
-    char name[ZP_TRADE_BROKER_CAP];
+    char name[ZP_BROKER_LEN];
 } zp_broker_name;
 
 /* fifo_snapshot row */
 typedef struct zp_fifo_snapshot {
     uint32_t lot_id;                               /* output (AUTOINCREMENT) */
 
-    char     broker[ZP_TRADE_BROKER_CAP];          /* required; non-empty */
+    char     broker[ZP_BROKER_LEN];          /* required; non-empty */
     uint32_t tax_year;                             /* required */
-    char     ticker[ZP_TRADE_TICKER_CAP];          /* required; non-empty */
+    char     ticker[ZP_TICKER_LEN];          /* required; non-empty */
 
     uint32_t acq_trade_id;                         /* required */
-    char     acq_datetime[ZP_TRADE_DATETIME_CAP];  /* required; non-empty */
+    char     acq_datetime[ZP_DATETIME_LEN];  /* required; non-empty */
 
     double   qty_remaining;                        /* required; >= 0.0 */
     double   cost_per_share_eur;                   /* required; >= 0.0 */
     double   acq_commission_eur;                   /* NaN or <0 => default 0.0 */
 
-    char     country[ZP_TRADE_COUNTRY_CAP];        /* required; non-empty */
+    char     country[ZP_COUNTRY_LEN];        /* required; non-empty */
 } zp_fifo_snapshot;
 
 /* fifo_realized row */
 typedef struct zp_fifo_realized {
     uint32_t operation_id;                          /* output (AUTOINCREMENT) */
 
-    char     broker[ZP_TRADE_BROKER_CAP];           /* required; non-empty */
+    char     broker[ZP_BROKER_LEN];           /* required; non-empty */
     uint32_t tax_year;                              /* required */
-    char     ticker[ZP_TRADE_TICKER_CAP];           /* required; non-empty */
+    char     ticker[ZP_TICKER_LEN];           /* required; non-empty */
 
     uint32_t sell_trade_id;                         /* required */
     uint32_t buy_trade_id;                          /* required */
     uint32_t match_seq;                             /* required (1..N per sell) */
 
-    char     sell_datetime[ZP_TRADE_DATETIME_CAP];  /* required; non-empty */
-    char     buy_datetime[ZP_TRADE_DATETIME_CAP];   /* required; non-empty */
+    char     sell_datetime[ZP_DATETIME_LEN];  /* required; non-empty */
+    char     buy_datetime[ZP_DATETIME_LEN];   /* required; non-empty */
 
     double   qty_matched;                           /* required; > 0.0 */
     double   proceeds_eur;                          /* required */
@@ -253,6 +268,11 @@ zp_error_code zp_sqlite_read_fifo_realized_by_broker_per_year(
 );
 
 zp_error_code zp_sqlite_close(zp_db_handle handle);
+
+zp_error_code zp_sqlite_process_year_load_only(
+    zp_db_handle handle,
+    uint32_t year
+);
 
 typedef enum {
     ZP_TABLE_TRADES = 0,

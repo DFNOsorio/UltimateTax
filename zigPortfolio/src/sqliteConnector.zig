@@ -7,14 +7,11 @@ const fifoRealized = @import("fifoRealized.zig");
 const insert = @import("insertTrades.zig");
 const read = @import("readTrades.zig");
 const meta = @import("sqliteMeta.zig");
+const processYear = @import("processYear.zig");
 
-// Expose sqlite3 C API for tests: tests do `const c = api.sqlite.c;`
 pub const c = @cImport({
     @cInclude("sqlite3.h");
 });
-
-// Options module passed from build.zig
-const pkgmeta = @import("pkgmeta");
 
 const DbHandle = helper.DbHandle;
 
@@ -29,7 +26,6 @@ fn sqlite_open_handle_impl(path: [*:0]const u8, out_handle: *DbHandle) helper.Er
         if (db != null) _ = c.sqlite3_close(db.?);
         return .open_fail;
     }
-
     out_handle.* = @intFromPtr(db.?);
     return .ok;
 }
@@ -45,18 +41,18 @@ fn sqlite_close_handle_impl(handle: DbHandle) helper.ErrorCode {
 }
 
 // ------------------------------------------------------------
-// C ABI (moved from old lib.zig)
+// Public Zig-callable API (used by lib.zig exports)
 // ------------------------------------------------------------
 
-// C ABI: zp_error_code zp_sqlite_open(const char *path, zp_db_handle *out_handle);
-pub export fn zp_sqlite_open(
-    path: [*:0]const u8,
-    out_handle: *DbHandle,
-) helper.ErrorCode {
+pub fn zp_sqlite_open(path: [*:0]const u8, out_handle: *DbHandle) helper.ErrorCode {
     return sqlite_open_handle_impl(path, out_handle);
 }
 
-pub export fn zp_sqlite_insert_trade(
+pub fn zp_sqlite_close(handle: DbHandle) helper.ErrorCode {
+    return sqlite_close_handle_impl(handle);
+}
+
+pub fn zp_sqlite_insert_trade(
     handle: DbHandle,
     trade_datetime: ?[*:0]const u8,
     ticker: ?[*:0]const u8,
@@ -87,7 +83,7 @@ pub export fn zp_sqlite_insert_trade(
     );
 }
 
-pub export fn zp_sqlite_insert_trade_struct(
+pub fn zp_sqlite_insert_trade_struct(
     handle: DbHandle,
     t: ?*const schema.zp_trade,
 ) helper.ErrorCode {
@@ -97,7 +93,7 @@ pub export fn zp_sqlite_insert_trade_struct(
     return insert.sqlite_insert_trade_struct(handle, t.?);
 }
 
-pub export fn zp_sqlite_read_trade_by_id(
+pub fn zp_sqlite_read_trade_by_id(
     handle: DbHandle,
     id: u32,
     out_trade: ?*schema.zp_trade,
@@ -108,7 +104,7 @@ pub export fn zp_sqlite_read_trade_by_id(
     return read.sqlite_read_trade_by_id(handle, id, out_trade.?);
 }
 
-pub export fn zp_sqlite_read_trades_by_year(
+pub fn zp_sqlite_read_trades_by_year(
     handle: DbHandle,
     year: u32,
     out_trades: ?[*]schema.zp_trade,
@@ -121,7 +117,7 @@ pub export fn zp_sqlite_read_trades_by_year(
     return read.sqlite_read_trades_by_year(handle, year, out_trades, out_cap, out_count.?);
 }
 
-pub export fn zp_sqlite_read_trades_by_broker(
+pub fn zp_sqlite_read_trades_by_broker(
     handle: DbHandle,
     broker: ?[*:0]const u8,
     out_trades: ?[*]schema.zp_trade,
@@ -135,7 +131,7 @@ pub export fn zp_sqlite_read_trades_by_broker(
     return read.sqlite_read_trades_by_broker(handle, broker.?, out_trades, out_cap, out_count.?);
 }
 
-pub export fn zp_sqlite_read_trades_by_year_and_broker(
+pub fn zp_sqlite_read_trades_by_year_and_broker(
     handle: DbHandle,
     year: u32,
     broker: ?[*:0]const u8,
@@ -150,7 +146,7 @@ pub export fn zp_sqlite_read_trades_by_year_and_broker(
     return read.sqlite_read_trades_by_year_and_broker(handle, year, broker.?, out_trades, out_cap, out_count.?);
 }
 
-pub export fn zp_sqlite_read_all_trades(
+pub fn zp_sqlite_read_all_trades(
     handle: DbHandle,
     out_trades: ?[*]schema.zp_trade,
     out_cap: usize,
@@ -162,7 +158,7 @@ pub export fn zp_sqlite_read_all_trades(
     return read.sqlite_read_all_trades(handle, out_trades, out_cap, out_count.?);
 }
 
-pub export fn zp_sqlite_get_unique_brokers(
+pub fn zp_sqlite_get_unique_brokers(
     handle: DbHandle,
     out_brokers: ?[*]schema.zp_broker_name,
     out_cap: usize,
@@ -174,7 +170,7 @@ pub export fn zp_sqlite_get_unique_brokers(
     return meta.sqlite_get_unique_brokers(handle, out_brokers, out_cap, out_count.?);
 }
 
-pub export fn zp_sqlite_get_unique_years(
+pub fn zp_sqlite_get_unique_years(
     handle: DbHandle,
     out_years: ?[*]u32,
     out_cap: usize,
@@ -186,8 +182,8 @@ pub export fn zp_sqlite_get_unique_years(
     return meta.sqlite_get_unique_years(handle, out_years, out_cap, out_count.?);
 }
 
-pub export fn zp_sqlite_insert_fifo_snapshot(
-    handle: helper.DbHandle,
+pub fn zp_sqlite_insert_fifo_snapshot(
+    handle: DbHandle,
     row: ?*const schema.zp_fifo_snapshot,
 ) helper.ErrorCode {
     if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
@@ -196,8 +192,8 @@ pub export fn zp_sqlite_insert_fifo_snapshot(
     return fifoSnapshot.sqlite_insert_fifo_snapshot(handle, row.?);
 }
 
-pub export fn zp_sqlite_read_fifo_snapshot_all(
-    handle: helper.DbHandle,
+pub fn zp_sqlite_read_fifo_snapshot_all(
+    handle: DbHandle,
     out_rows: ?[*]schema.zp_fifo_snapshot,
     out_cap: usize,
     out_count: ?*usize,
@@ -208,8 +204,8 @@ pub export fn zp_sqlite_read_fifo_snapshot_all(
     return fifoSnapshot.sqlite_read_fifo_snapshot_all(handle, out_rows, out_cap, out_count.?);
 }
 
-pub export fn zp_sqlite_read_fifo_snapshot_by_tax_year(
-    handle: helper.DbHandle,
+pub fn zp_sqlite_read_fifo_snapshot_by_tax_year(
+    handle: DbHandle,
     tax_year: u32,
     out_rows: ?[*]schema.zp_fifo_snapshot,
     out_cap: usize,
@@ -221,8 +217,8 @@ pub export fn zp_sqlite_read_fifo_snapshot_by_tax_year(
     return fifoSnapshot.sqlite_read_fifo_snapshot_by_tax_year(handle, tax_year, out_rows, out_cap, out_count.?);
 }
 
-pub export fn zp_sqlite_read_fifo_snapshot_by_ticker_per_year(
-    handle: helper.DbHandle,
+pub fn zp_sqlite_read_fifo_snapshot_by_ticker_per_year(
+    handle: DbHandle,
     tax_year: u32,
     ticker: ?[*:0]const u8,
     out_rows: ?[*]schema.zp_fifo_snapshot,
@@ -236,8 +232,8 @@ pub export fn zp_sqlite_read_fifo_snapshot_by_ticker_per_year(
     return fifoSnapshot.sqlite_read_fifo_snapshot_by_ticker_per_year(handle, tax_year, ticker.?, out_rows, out_cap, out_count.?);
 }
 
-pub export fn zp_sqlite_read_fifo_snapshot_by_broker_per_year(
-    handle: helper.DbHandle,
+pub fn zp_sqlite_read_fifo_snapshot_by_broker_per_year(
+    handle: DbHandle,
     tax_year: u32,
     broker: ?[*:0]const u8,
     out_rows: ?[*]schema.zp_fifo_snapshot,
@@ -251,8 +247,8 @@ pub export fn zp_sqlite_read_fifo_snapshot_by_broker_per_year(
     return fifoSnapshot.sqlite_read_fifo_snapshot_by_broker_per_year(handle, tax_year, broker.?, out_rows, out_cap, out_count.?);
 }
 
-pub export fn zp_sqlite_insert_fifo_realized(
-    handle: helper.DbHandle,
+pub fn zp_sqlite_insert_fifo_realized(
+    handle: DbHandle,
     row: ?*const schema.zp_fifo_realized,
 ) helper.ErrorCode {
     if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
@@ -261,8 +257,8 @@ pub export fn zp_sqlite_insert_fifo_realized(
     return fifoRealized.sqlite_insert_fifo_realized(handle, row.?);
 }
 
-pub export fn zp_sqlite_read_fifo_realized_all(
-    handle: helper.DbHandle,
+pub fn zp_sqlite_read_fifo_realized_all(
+    handle: DbHandle,
     out_rows: ?[*]schema.zp_fifo_realized,
     out_cap: usize,
     out_count: ?*usize,
@@ -273,8 +269,8 @@ pub export fn zp_sqlite_read_fifo_realized_all(
     return fifoRealized.sqlite_read_fifo_realized_all(handle, out_rows, out_cap, out_count.?);
 }
 
-pub export fn zp_sqlite_read_fifo_realized_by_tax_year(
-    handle: helper.DbHandle,
+pub fn zp_sqlite_read_fifo_realized_by_tax_year(
+    handle: DbHandle,
     tax_year: u32,
     out_rows: ?[*]schema.zp_fifo_realized,
     out_cap: usize,
@@ -286,8 +282,8 @@ pub export fn zp_sqlite_read_fifo_realized_by_tax_year(
     return fifoRealized.sqlite_read_fifo_realized_by_tax_year(handle, tax_year, out_rows, out_cap, out_count.?);
 }
 
-pub export fn zp_sqlite_read_fifo_realized_by_ticker_per_year(
-    handle: helper.DbHandle,
+pub fn zp_sqlite_read_fifo_realized_by_ticker_per_year(
+    handle: DbHandle,
     tax_year: u32,
     ticker: ?[*:0]const u8,
     out_rows: ?[*]schema.zp_fifo_realized,
@@ -301,8 +297,8 @@ pub export fn zp_sqlite_read_fifo_realized_by_ticker_per_year(
     return fifoRealized.sqlite_read_fifo_realized_by_ticker_per_year(handle, tax_year, ticker.?, out_rows, out_cap, out_count.?);
 }
 
-pub export fn zp_sqlite_read_fifo_realized_by_broker_per_year(
-    handle: helper.DbHandle,
+pub fn zp_sqlite_read_fifo_realized_by_broker_per_year(
+    handle: DbHandle,
     tax_year: u32,
     broker: ?[*:0]const u8,
     out_rows: ?[*]schema.zp_fifo_realized,
@@ -316,15 +312,23 @@ pub export fn zp_sqlite_read_fifo_realized_by_broker_per_year(
     return fifoRealized.sqlite_read_fifo_realized_by_broker_per_year(handle, tax_year, broker.?, out_rows, out_cap, out_count.?);
 }
 
-// C ABI: zp_error_code zp_sqlite_close(zp_db_handle handle);
-pub export fn zp_sqlite_close(handle: DbHandle) helper.ErrorCode {
-    return sqlite_close_handle_impl(handle);
+// ------------------------------------------------------------
+// Year processing (load-only prototype)
+// ------------------------------------------------------------
+
+pub fn zp_sqlite_process_year_load_only(handle: DbHandle, year: u32) helper.ErrorCode {
+    if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
+    return processYear.sqlite_process_year_load_only(handle, year);
 }
+
+// ------------------------------------------------------------
+// COUNT(*) helper
+// ------------------------------------------------------------
 
 pub const zp_table = meta.zp_table;
 
-pub export fn zp_sqlite_count_rows(
-    db: helper.DbHandle,
+pub fn zp_sqlite_count_rows(
+    db: DbHandle,
     table: meta.zp_table,
     year: ?*const u32,
     broker: ?[*:0]const u8,
@@ -333,93 +337,9 @@ pub export fn zp_sqlite_count_rows(
 ) helper.ErrorCode {
     const y: ?u32 = if (year) |ptr| ptr.* else null;
 
-    const b: ?[:0]const u8 = if (broker) |ptr|
-        std.mem.span(ptr)
-    else
-        null;
+    const b: ?[:0]const u8 = if (broker) |ptr| std.mem.span(ptr) else null;
+    const t: ?[:0]const u8 = if (ticker) |ptr| std.mem.span(ptr) else null;
 
-    const t: ?[:0]const u8 = if (ticker) |ptr|
-        std.mem.span(ptr)
-    else
-        null;
     if (out_count == null) return helper.ErrorCode.preparation_fail;
-
     return meta.sqlite_count_rows(db, table, y, b, t, out_count.?);
-}
-
-// ------------------------------------------------------------
-// Version (moved from old lib.zig, matches header: writes into buffer)
-// ------------------------------------------------------------
-
-pub const Version = struct {
-    major: u8 = 0,
-    minor: u8 = 0,
-    patch: u8 = 0,
-
-    pub fn toInt(self: Version) u32 {
-        return (@as(u32, self.major) << 16) | (@as(u32, self.minor) << 8) | (@as(u32, self.patch));
-    }
-
-    pub fn format(self: Version, writer: anytype) !void {
-        try writer.print("{d}.{d}.{d}", .{ self.major, self.minor, self.patch });
-    }
-};
-
-fn parseVersionFromZon(contents: []const u8) Version {
-    var it = std.mem.splitScalar(u8, contents, '\n');
-
-    var major: u8 = 0;
-    var minor: u8 = 0;
-    var patch: u8 = 0;
-
-    while (it.next()) |raw_line| {
-        const line = std.mem.trim(u8, raw_line, " \t\r\n");
-        if (!std.mem.startsWith(u8, line, ".version")) continue;
-
-        // Expect: .version = "0.0.1",
-        const eq_pos = std.mem.indexOfScalar(u8, line, '=') orelse break;
-        const after_eq = std.mem.trim(u8, line[eq_pos + 1 ..], " \t,");
-
-        if (after_eq.len < 2 or after_eq[0] != '"' or after_eq[after_eq.len - 1] != '"') break;
-
-        const ver_str = after_eq[1 .. after_eq.len - 1];
-        var parts = std.mem.splitScalar(u8, ver_str, '.');
-
-        if (parts.next()) |a| major = std.fmt.parseUnsigned(u8, a, 10) catch 0;
-        if (parts.next()) |b| minor = std.fmt.parseUnsigned(u8, b, 10) catch 0;
-        if (parts.next()) |cpart| patch = std.fmt.parseUnsigned(u8, cpart, 10) catch 0;
-
-        break;
-    }
-
-    return .{ .major = major, .minor = minor, .patch = patch };
-}
-
-const BUILD_VERSION: Version = parseVersionFromZon(pkgmeta.build_zon);
-
-pub fn getVersion() Version {
-    return BUILD_VERSION;
-}
-
-pub export fn zp_version_major() c_int {
-    return @as(c_int, BUILD_VERSION.major);
-}
-pub export fn zp_version_minor() c_int {
-    return @as(c_int, BUILD_VERSION.minor);
-}
-pub export fn zp_version_patch() c_int {
-    return @as(c_int, BUILD_VERSION.patch);
-}
-
-// Header expects: size_t zp_version_string(char *buf, size_t buf_len);
-pub export fn zp_version_string(buf: [*]u8, buf_len: usize) usize {
-    if (buf_len == 0) return 0;
-
-    const slice = std.fmt.bufPrintZ(
-        buf[0..buf_len],
-        "{d}.{d}.{d}",
-        .{ BUILD_VERSION.major, BUILD_VERSION.minor, BUILD_VERSION.patch },
-    ) catch return 0;
-
-    return slice.len;
 }
