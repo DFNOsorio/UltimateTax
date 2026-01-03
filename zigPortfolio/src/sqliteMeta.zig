@@ -1,6 +1,7 @@
 const std = @import("std");
 const helper = @import("helper.zig");
 const trade = @import("schemaStructs.zig");
+const sqlite = @import("sqliteConnector.zig");
 
 pub const c = @cImport({
     @cInclude("sqlite3.h");
@@ -131,5 +132,111 @@ pub fn sqlite_get_unique_years(
     }
 
     out_count.* = idx;
+    return .ok;
+}
+
+pub const zp_table = enum(u32) {
+    trades = 0,
+    fifo_snapshot = 1,
+    fifo_realized = 2,
+};
+
+pub fn sqlite_count_rows(
+    db: DbHandle,
+    table: zp_table,
+    year: ?u32,
+    broker: ?[:0]const u8,
+    ticker: ?[:0]const u8,
+    out_count: *usize,
+) helper.ErrorCode {
+    out_count.* = 0;
+
+    // Use a bigger fixed buffer to be safe, but the key is: build in one pass
+    // (no intermediate allocPrint slices that permanently consume the FBA).
+    var buf: [512]u8 = undefined;
+    var fba = std.heap.FixedBufferAllocator.init(&buf);
+    const allocator = fba.allocator();
+
+    const base_table: []const u8 = switch (table) {
+        .trades => "trades",
+        .fifo_snapshot => "fifo_snapshot",
+        .fifo_realized => "fifo_realized",
+    };
+
+    var q = std.ArrayList(u8){};
+    defer q.deinit(allocator);
+
+    const w = q.writer(allocator);
+
+    // SELECT COUNT(*) FROM <table>
+    w.print("SELECT COUNT(*) FROM {s}", .{base_table}) catch return .preparation_fail;
+
+    // Build WHERE in a single pass
+    var has_where = false;
+
+    // year filter
+    if (year) |y| {
+        w.print(" WHERE ", .{}) catch return .preparation_fail;
+        has_where = true;
+
+        switch (table) {
+            .trades => {
+                // trade_datetime is text: "YYYY-.."
+                w.print("substr(trade_datetime,1,4) = '{d}'", .{y}) catch return .preparation_fail;
+            },
+            else => {
+                w.print("tax_year = {d}", .{y}) catch return .preparation_fail;
+            },
+        }
+    }
+
+    // broker filter
+    if (broker) |b0| {
+        const b = std.mem.sliceTo(b0, 0); // drop sentinel for formatting
+        if (!has_where) {
+            w.print(" WHERE ", .{}) catch return .preparation_fail;
+            has_where = true;
+        } else {
+            w.print(" AND ", .{}) catch return .preparation_fail;
+        }
+        w.print("broker = '{s}'", .{b}) catch return .preparation_fail;
+    }
+
+    // ticker filter
+    if (ticker) |t0| {
+        const t = std.mem.sliceTo(t0, 0); // drop sentinel for formatting
+        if (!has_where) {
+            w.print(" WHERE ", .{}) catch return .preparation_fail;
+            has_where = true;
+        } else {
+            w.print(" AND ", .{}) catch return .preparation_fail;
+        }
+        w.print("ticker = '{s}'", .{t}) catch return .preparation_fail;
+    }
+
+    // sqlite3_prepare_v2 with -1 expects NUL-terminated SQL
+    q.append(allocator, 0) catch return .preparation_fail;
+
+    const db_ptr: *c.sqlite3 = @ptrFromInt(db);
+
+    var stmt: ?*c.sqlite3_stmt = null;
+    const prep_rc = c.sqlite3_prepare_v2(
+        db_ptr,
+        @as([*:0]const u8, @ptrCast(q.items.ptr)),
+        -1,
+        &stmt,
+        null,
+    );
+    if (prep_rc != c.SQLITE_OK or stmt == null)
+        return .preparation_fail;
+    defer _ = c.sqlite3_finalize(stmt.?);
+
+    const step_rc = c.sqlite3_step(stmt.?);
+    if (step_rc != c.SQLITE_ROW)
+        return .read_row_fail;
+
+    const n = c.sqlite3_column_int64(stmt.?, 0);
+    out_count.* = @as(usize, @intCast(@max(@as(i64, 0), n)));
+
     return .ok;
 }

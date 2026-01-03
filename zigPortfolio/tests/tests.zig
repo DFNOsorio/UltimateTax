@@ -8,4 +8,5 @@ comptime {
     _ = @import("get_unique_meta_tests.zig");
     _ = @import("fifo_snapshot_tests.zig");
     _ = @import("fifo_realized_tests.zig");
+    _ = @import("sqlite_count_rows_tests.zig");
 }

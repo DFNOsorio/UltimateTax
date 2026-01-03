@@ -321,6 +321,32 @@ pub export fn zp_sqlite_close(handle: DbHandle) helper.ErrorCode {
     return sqlite_close_handle_impl(handle);
 }
 
+pub const zp_table = meta.zp_table;
+
+pub export fn zp_sqlite_count_rows(
+    db: helper.DbHandle,
+    table: meta.zp_table,
+    year: ?*const u32,
+    broker: ?[*:0]const u8,
+    ticker: ?[*:0]const u8,
+    out_count: ?*usize,
+) helper.ErrorCode {
+    const y: ?u32 = if (year) |ptr| ptr.* else null;
+
+    const b: ?[:0]const u8 = if (broker) |ptr|
+        std.mem.span(ptr)
+    else
+        null;
+
+    const t: ?[:0]const u8 = if (ticker) |ptr|
+        std.mem.span(ptr)
+    else
+        null;
+    if (out_count == null) return helper.ErrorCode.preparation_fail;
+
+    return meta.sqlite_count_rows(db, table, y, b, t, out_count.?);
+}
+
 // ------------------------------------------------------------
 // Version (moved from old lib.zig, matches header: writes into buffer)
 // ------------------------------------------------------------

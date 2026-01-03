@@ -254,6 +254,21 @@ zp_error_code zp_sqlite_read_fifo_realized_by_broker_per_year(
 
 zp_error_code zp_sqlite_close(zp_db_handle handle);
 
+typedef enum {
+    ZP_TABLE_TRADES = 0,
+    ZP_TABLE_FIFO_SNAPSHOT = 1,
+    ZP_TABLE_FIFO_REALIZED = 2
+} zp_table;
+
+zp_error_code zp_sqlite_count_rows(
+    zp_db_handle handle,
+    zp_table table,
+    const uint32_t* year,
+    const char* broker,
+    const char* ticker,
+    size_t* out_count
+);
+
 /* Version */
 int    zp_version_major(void);
 int    zp_version_minor(void);

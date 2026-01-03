@@ -19,6 +19,9 @@ pub const zp_sqlite_read_all_trades = sqlite.zp_sqlite_read_all_trades;
 pub const zp_sqlite_get_unique_brokers = sqlite.zp_sqlite_get_unique_brokers;
 pub const zp_sqlite_get_unique_years = sqlite.zp_sqlite_get_unique_years;
 
+pub const zp_sqlite_count_rows = sqlite.zp_sqlite_count_rows;
+pub const zp_table = sqlite.zp_table;
+
 pub const zp_version_major = sqlite.zp_version_major;
 pub const zp_version_minor = sqlite.zp_version_minor;
 pub const zp_version_patch = sqlite.zp_version_patch;
