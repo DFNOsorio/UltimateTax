@@ -126,3 +126,82 @@ test "sqlite_count_rows – fifo tables" {
     );
     try testing.expectEqual(@as(usize, 1), n);
 }
+
+test "sqlite_count_trades_by_year_side – buy/sell" {
+    common.vprint("sqlite_count_trades_by_year_side: buy/sell");
+
+    const db = try common.openMemDb();
+    defer _ = api.zp_sqlite_close(db);
+
+    // Mix of BUY/SELL across years
+    _ = try common.insertTradeReturnId(db, "2022-01-10", "AAPL", "BUY");
+    _ = try common.insertTradeReturnId(db, "2022-02-11", "AAPL", "SELL");
+    _ = try common.insertTradeReturnId(db, "2022-06-01", "MSFT", "BUY");
+    _ = try common.insertTradeReturnId(db, "2023-02-15", "AAPL", "BUY");
+    _ = try common.insertTradeReturnId(db, "2023-03-20", "MSFT", "SELL");
+
+    var n: usize = 0;
+
+    // 2022 BUY = 2
+    try testing.expectEqual(
+        helper.ErrorCode.ok,
+        api.zp_sqlite_count_buy_trades_by_year(db, 2022, &n),
+    );
+    try testing.expectEqual(@as(usize, 2), n);
+
+    // 2022 SELL = 1
+    try testing.expectEqual(
+        helper.ErrorCode.ok,
+        api.zp_sqlite_count_sell_trades_by_year(db, 2022, &n),
+    );
+    try testing.expectEqual(@as(usize, 1), n);
+
+    // 2023 BUY = 1
+    try testing.expectEqual(
+        helper.ErrorCode.ok,
+        api.zp_sqlite_count_buy_trades_by_year(db, 2023, &n),
+    );
+    try testing.expectEqual(@as(usize, 1), n);
+
+    // 2023 SELL = 1
+    try testing.expectEqual(
+        helper.ErrorCode.ok,
+        api.zp_sqlite_count_sell_trades_by_year(db, 2023, &n),
+    );
+    try testing.expectEqual(@as(usize, 1), n);
+
+    // 2024 BUY = 0 (no rows)
+    try testing.expectEqual(
+        helper.ErrorCode.ok,
+        api.zp_sqlite_count_buy_trades_by_year(db, 2024, &n),
+    );
+    try testing.expectEqual(@as(usize, 0), n);
+
+    // 2024 SELL = 0 (no rows)
+    try testing.expectEqual(
+        helper.ErrorCode.ok,
+        api.zp_sqlite_count_sell_trades_by_year(db, 2024, &n),
+    );
+    try testing.expectEqual(@as(usize, 0), n);
+}
+
+test "sqlite_count_trades_by_year_side – invalid args" {
+    common.vprint("sqlite_count_trades_by_year_side: invalid args");
+
+    const db = try common.openMemDb();
+    defer _ = api.zp_sqlite_close(db);
+
+    var n: usize = 123;
+
+    // year == 0 should be invalid_argument (per sqliteMeta.zig helper)
+    try testing.expectEqual(
+        helper.ErrorCode.invalid_argument,
+        api.zp_sqlite_count_buy_trades_by_year(db, 0, &n),
+    );
+
+    // null out_count should map to preparation_fail in the connector wrapper you added
+    try testing.expectEqual(
+        helper.ErrorCode.preparation_fail,
+        api.zp_sqlite_count_sell_trades_by_year(db, 2022, null),
+    );
+}

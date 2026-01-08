@@ -4,6 +4,23 @@ const Build = std.Build;
 // Read build.zig.zon for version info
 const build_zon_text = @embedFile("build.zig.zon");
 
+fn addBundledSqlite(b: *Build, c: *std.Build.Step.Compile) void {
+    // vendor is at repo root (sibling of zigPortfolio), so go up one level.
+    const sqlite_dir = b.path("../vendor/sqlite");
+
+    c.addIncludePath(sqlite_dir);
+
+    c.addCSourceFile(.{
+        .file = b.path("../vendor/sqlite/sqlite3.c"),
+        .flags = &.{
+            "-DSQLITE_THREADSAFE=1",
+            "-DSQLITE_OMIT_LOAD_EXTENSION=1",
+        },
+    });
+
+    c.linkLibC();
+}
+
 pub fn build(b: *Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -18,11 +35,11 @@ pub fn build(b: *Build) void {
     const lib = b.addLibrary(.{
         .name = "zigPortfolio",
         .root_module = lib_mod,
-        .linkage = .dynamic, // produces libzigPortfolio.dylib on macOS
+        .linkage = .dynamic, // macOS: .dylib, Windows: .dll, Linux: .so
     });
 
-    // Link system SQLite
-    lib.linkSystemLibrary("sqlite3");
+    // Replace system SQLite link with bundled amalgamation
+    addBundledSqlite(b, lib);
 
     // Options module -> pkgmeta (for your version parsing)
     const opts = b.addOptions();
@@ -66,7 +83,9 @@ pub fn build(b: *Build) void {
     const unit_tests = b.addTest(.{
         .root_module = tests_mod,
     });
-    unit_tests.linkSystemLibrary("sqlite3");
+
+    // Ensure tests link the same bundled SQLite
+    addBundledSqlite(b, unit_tests);
 
     const run_unit_tests = b.addRunArtifact(unit_tests);
     const test_step = b.step("test", "Run unit tests");
@@ -87,7 +106,9 @@ pub fn build(b: *Build) void {
     const unit_tests_verbose = b.addTest(.{
         .root_module = tests_mod_verbose,
     });
-    unit_tests_verbose.linkSystemLibrary("sqlite3");
+
+    // Ensure verbose tests link the same bundled SQLite
+    addBundledSqlite(b, unit_tests_verbose);
 
     // Run emitted test binary directly (avoids the --listen=- IPC runner behavior)
     const run_unit_tests_verbose = std.Build.Step.Run.create(b, "run unit tests (verbose)");

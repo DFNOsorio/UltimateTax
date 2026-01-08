@@ -180,13 +180,9 @@ pub fn sqlite_count_rows(
         has_where = true;
 
         switch (table) {
-            .trades => {
-                // trade_datetime is text: "YYYY-.."
-                w.print("substr(trade_datetime,1,4) = '{d}'", .{y}) catch return .preparation_fail;
-            },
-            else => {
-                w.print("tax_year = {d}", .{y}) catch return .preparation_fail;
-            },
+            .trades => w.print("substr(trade_datetime,1,4) = '{d}'", .{y}) catch return .preparation_fail,
+            .fifo_snapshot => w.print("tax_year <= {d}", .{y}) catch return .preparation_fail,
+            .fifo_realized => w.print("tax_year = {d}", .{y}) catch return .preparation_fail,
         }
     }
 
@@ -239,4 +235,73 @@ pub fn sqlite_count_rows(
     out_count.* = @as(usize, @intCast(@max(@as(i64, 0), n)));
 
     return .ok;
+}
+
+// ------------------------------------------------------------
+// COUNT(*) helpers for trades by year + side
+// ------------------------------------------------------------
+
+fn sqlite_count_trades_by_year_and_side(
+    db: DbHandle,
+    year: u32,
+    side_upper: []const u8, // "BUY" or "SELL"
+    out_count: *usize,
+) helper.ErrorCode {
+    out_count.* = 0;
+    if (db == helper.INVALID_DB_HANDLE) return .invalid_argument;
+    if (year == 0) return .invalid_argument;
+
+    // Keep the pattern aligned with sqlite_count_rows: fixed buffer + single-pass build.
+    var buf: [256]u8 = undefined;
+    var fba = std.heap.FixedBufferAllocator.init(&buf);
+    const allocator = fba.allocator();
+
+    var q = std.ArrayList(u8){};
+    defer q.deinit(allocator);
+
+    const w = q.writer(allocator);
+    // NOTE: schema constrains type to BUY/SELL, but we still use upper() for safety.
+    w.print(
+        "SELECT COUNT(*) FROM trades WHERE substr(trade_datetime,1,4) = '{d}' AND upper(type) = '{s}'",
+        .{ year, side_upper },
+    ) catch return .preparation_fail;
+
+    // sqlite3_prepare_v2 with -1 expects NUL-terminated SQL
+    q.append(allocator, 0) catch return .preparation_fail;
+
+    const db_ptr: *c.sqlite3 = @ptrFromInt(db);
+
+    var stmt: ?*c.sqlite3_stmt = null;
+    const prep_rc = c.sqlite3_prepare_v2(
+        db_ptr,
+        @as([*:0]const u8, @ptrCast(q.items.ptr)),
+        -1,
+        &stmt,
+        null,
+    );
+    if (prep_rc != c.SQLITE_OK or stmt == null) return .preparation_fail;
+    defer _ = c.sqlite3_finalize(stmt.?);
+
+    const step_rc = c.sqlite3_step(stmt.?);
+    if (step_rc != c.SQLITE_ROW) return .read_row_fail;
+
+    const n = c.sqlite3_column_int64(stmt.?, 0);
+    out_count.* = @as(usize, @intCast(@max(@as(i64, 0), n)));
+    return .ok;
+}
+
+pub fn sqlite_count_buy_trades_by_year(
+    db: DbHandle,
+    year: u32,
+    out_count: *usize,
+) helper.ErrorCode {
+    return sqlite_count_trades_by_year_and_side(db, year, "BUY", out_count);
+}
+
+pub fn sqlite_count_sell_trades_by_year(
+    db: DbHandle,
+    year: u32,
+    out_count: *usize,
+) helper.ErrorCode {
+    return sqlite_count_trades_by_year_and_side(db, year, "SELL", out_count);
 }

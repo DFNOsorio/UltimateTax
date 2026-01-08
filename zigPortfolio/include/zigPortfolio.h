@@ -167,6 +167,28 @@ zp_error_code zp_sqlite_read_trades_by_year_and_broker(
     size_t* out_count
 );
 
+// Read BUY trades for a given year.
+// If out_trades == NULL and out_cap == 0, returns required row count in out_count.
+// Otherwise, writes up to out_cap rows and sets out_count to number written.
+zp_error_code zp_sqlite_read_buy_trades_by_year(
+    zp_db_handle handle,
+    uint32_t year,
+    zp_trade* out_trades,     // nullable
+    size_t out_cap,
+    size_t* out_count         // required
+);
+
+// Read SELL trades for a given year.
+// If out_trades == NULL and out_cap == 0, returns required row count in out_count.
+// Otherwise, writes up to out_cap rows and sets out_count to number written.
+zp_error_code zp_sqlite_read_sell_trades_by_year(
+    zp_db_handle handle,
+    uint32_t year,
+    zp_trade* out_trades,     // nullable
+    size_t out_cap,
+    size_t* out_count         // required
+);
+
 zp_error_code zp_sqlite_read_all_trades(
     zp_db_handle handle,
     zp_trade* out_trades,
@@ -223,6 +245,34 @@ zp_error_code zp_sqlite_read_fifo_snapshot_by_broker_per_year(
     zp_db_handle handle,
     uint32_t tax_year,
     const char* broker,
+    zp_fifo_snapshot* out_rows,
+    size_t out_cap,
+    size_t* out_count
+);
+
+// Delete one fifo_snapshot row by lot_id.
+// Returns ZP_ERROR_OK if a row was deleted; ZP_ERROR_EXECUTION_FAIL if not found.
+zp_error_code zp_sqlite_delete_fifo_snapshot_by_lot_id(
+    zp_db_handle handle,
+    uint32_t lot_id
+);
+
+// Update fifo_snapshot.qty_remaining for a given lot_id.
+// Returns ZP_ERROR_OK if updated; ZP_ERROR_EXECUTION_FAIL if lot_id not found.
+zp_error_code zp_sqlite_update_fifo_snapshot_qty_remaining_by_lot_id(
+    zp_db_handle handle,
+    uint32_t lot_id,
+    double qty_remaining
+);
+
+// Read fifo_snapshot rows up to tax_year (tax_year <= given year), filtered by broker AND ticker.
+// If out_rows is NULL and out_cap is 0, out_count receives the required row count.
+// Otherwise writes up to out_cap rows and sets out_count to number written.
+zp_error_code zp_sqlite_read_fifo_snapshot_by_year_broker_ticker(
+    zp_db_handle handle,
+    uint32_t tax_year,
+    const char* broker,
+    const char* ticker,
     zp_fifo_snapshot* out_rows,
     size_t out_cap,
     size_t* out_count
@@ -286,6 +336,22 @@ zp_error_code zp_sqlite_count_rows(
     const uint32_t* year,
     const char* broker,
     const char* ticker,
+    size_t* out_count
+);
+
+// Count BUY trades for a given tax year (year extracted from trade_datetime).
+// out_count receives the COUNT(*).
+zp_error_code zp_sqlite_count_buy_trades_by_year(
+    zp_db_handle db,
+    const uint32_t* year,
+    size_t* out_count
+);
+
+// Count SELL trades for a given tax year (year extracted from trade_datetime).
+// out_count receives the COUNT(*).
+zp_error_code zp_sqlite_count_sell_trades_by_year(
+    zp_db_handle db,
+    const uint32_t* year,
     size_t* out_count
 );
 

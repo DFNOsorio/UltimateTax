@@ -96,6 +96,26 @@ pub export fn zp_sqlite_read_trades_by_year_and_broker(
     return sqlite.zp_sqlite_read_trades_by_year_and_broker(handle, year, broker, out_trades, out_cap, out_count);
 }
 
+pub export fn zp_sqlite_read_buy_trades_by_year(
+    handle: helper.DbHandle,
+    year: u32,
+    out_trades: ?[*]schema.zp_trade,
+    out_cap: usize,
+    out_count: ?*usize,
+) helper.ErrorCode {
+    return sqlite.zp_sqlite_read_buy_trades_by_year(handle, year, out_trades, out_cap, out_count);
+}
+
+pub export fn zp_sqlite_read_sell_trades_by_year(
+    handle: helper.DbHandle,
+    year: u32,
+    out_trades: ?[*]schema.zp_trade,
+    out_cap: usize,
+    out_count: ?*usize,
+) helper.ErrorCode {
+    return sqlite.zp_sqlite_read_sell_trades_by_year(handle, year, out_trades, out_cap, out_count);
+}
+
 pub export fn zp_sqlite_read_all_trades(
     handle: helper.DbHandle,
     out_trades: ?[*]schema.zp_trade,
@@ -173,6 +193,45 @@ pub export fn zp_sqlite_read_fifo_snapshot_by_broker_per_year(
     return sqlite.zp_sqlite_read_fifo_snapshot_by_broker_per_year(handle, tax_year, broker, out_rows, out_cap, out_count);
 }
 
+pub export fn zp_sqlite_read_fifo_snapshot_by_year_broker_ticker(
+    handle: helper.DbHandle,
+    tax_year: u32,
+    broker: [*:0]const u8,
+    ticker: [*:0]const u8,
+    out_rows: ?[*]schema.zp_fifo_snapshot,
+    out_cap: usize,
+    out_count: ?*usize,
+) helper.ErrorCode {
+    return sqlite.zp_sqlite_read_fifo_snapshot_by_year_broker_ticker(
+        handle,
+        tax_year,
+        broker,
+        ticker,
+        out_rows,
+        out_cap,
+        out_count,
+    );
+}
+
+pub export fn zp_sqlite_delete_fifo_snapshot_by_lot_id(
+    handle: helper.DbHandle,
+    lot_id: u32,
+) helper.ErrorCode {
+    return sqlite.zp_sqlite_delete_fifo_snapshot_by_lot_id(handle, lot_id);
+}
+
+pub export fn zp_sqlite_update_fifo_snapshot_qty_remaining_by_lot_id(
+    handle: helper.DbHandle,
+    lot_id: u32,
+    qty_remaining: f64,
+) helper.ErrorCode {
+    return sqlite.zp_sqlite_update_fifo_snapshot_qty_remaining_by_lot_id(
+        handle,
+        lot_id,
+        qty_remaining,
+    );
+}
+
 // FIFO realized
 pub export fn zp_sqlite_insert_fifo_realized(
     handle: helper.DbHandle,
@@ -239,6 +298,22 @@ pub export fn zp_sqlite_count_rows(
     out_count: ?*usize,
 ) helper.ErrorCode {
     return sqlite.zp_sqlite_count_rows(db, table, year, broker, ticker, out_count);
+}
+
+pub export fn zp_sqlite_count_buy_trades_by_year(
+    db: helper.DbHandle,
+    year: u32,
+    out_count: ?*usize,
+) helper.ErrorCode {
+    return sqlite.zp_sqlite_count_buy_trades_by_year(db, year, out_count);
+}
+
+pub export fn zp_sqlite_count_sell_trades_by_year(
+    db: helper.DbHandle,
+    year: u32,
+    out_count: ?*usize,
+) helper.ErrorCode {
+    return sqlite.zp_sqlite_count_sell_trades_by_year(db, year, out_count);
 }
 
 // ------------------------------------------------------------

@@ -173,7 +173,7 @@ pub fn sqlite_read_fifo_snapshot_all(
         \\SELECT lot_id, broker, tax_year, ticker, acq_trade_id, acq_datetime,
         \\       qty_remaining, cost_per_share_eur, acq_commission_eur, country
         \\FROM fifo_snapshot
-        \\ORDER BY broker, tax_year, ticker, acq_datetime, lot_id;
+        \\ORDER BY broker, tax_year, ticker, acq_datetime ASC, lot_id;
     ;
 
     var stmt: ?*c.sqlite3_stmt = null;
@@ -200,8 +200,8 @@ pub fn sqlite_read_fifo_snapshot_by_tax_year(
         \\SELECT lot_id, broker, tax_year, ticker, acq_trade_id, acq_datetime,
         \\       qty_remaining, cost_per_share_eur, acq_commission_eur, country
         \\FROM fifo_snapshot
-        \\WHERE tax_year = ?1
-        \\ORDER BY broker, ticker, acq_datetime, lot_id;
+        \\WHERE tax_year <= ?1
+        \\ORDER BY broker, ticker, acq_datetime ASC, lot_id;
     ;
 
     var stmt: ?*c.sqlite3_stmt = null;
@@ -232,8 +232,8 @@ pub fn sqlite_read_fifo_snapshot_by_ticker_per_year(
         \\SELECT lot_id, broker, tax_year, ticker, acq_trade_id, acq_datetime,
         \\       qty_remaining, cost_per_share_eur, acq_commission_eur, country
         \\FROM fifo_snapshot
-        \\WHERE tax_year = ?1 AND ticker = ?2
-        \\ORDER BY broker, acq_datetime, lot_id;
+        \\WHERE tax_year <= ?1 AND ticker = ?2
+        \\ORDER BY broker, acq_datetime ASC, lot_id;
     ;
 
     var stmt: ?*c.sqlite3_stmt = null;
@@ -267,8 +267,8 @@ pub fn sqlite_read_fifo_snapshot_by_broker_per_year(
         \\SELECT lot_id, broker, tax_year, ticker, acq_trade_id, acq_datetime,
         \\       qty_remaining, cost_per_share_eur, acq_commission_eur, country
         \\FROM fifo_snapshot
-        \\WHERE tax_year = ?1 AND broker = ?2
-        \\ORDER BY ticker, acq_datetime, lot_id;
+        \\WHERE tax_year <= ?1 AND broker = ?2
+        \\ORDER BY ticker, acq_datetime ASC, lot_id;
     ;
 
     var stmt: ?*c.sqlite3_stmt = null;
@@ -283,4 +283,115 @@ pub fn sqlite_read_fifo_snapshot_by_broker_per_year(
     if (ec != .ok) return ec;
 
     return read_loop(stmt.?, out_rows, out_cap, out_count);
+}
+
+pub fn sqlite_read_fifo_snapshot_by_year_broker_ticker(
+    handle: DbHandle,
+    tax_year: u32,
+    broker: [*:0]const u8,
+    ticker: [*:0]const u8,
+    out_rows: ?[*]Row,
+    out_cap: usize,
+    out_count: *usize,
+) helper.ErrorCode {
+    if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
+    out_count.* = 0;
+
+    const db: *c.sqlite3 = @ptrFromInt(handle);
+
+    const sql: [:0]const u8 =
+        \\SELECT lot_id, broker, tax_year, ticker, acq_trade_id, acq_datetime,
+        \\       qty_remaining, cost_per_share_eur, acq_commission_eur, country
+        \\FROM fifo_snapshot
+        \\WHERE tax_year <= ?1 AND broker = ?2 AND ticker = ?3
+        \\ORDER BY acq_datetime ASC, lot_id;
+    ;
+
+    var stmt: ?*c.sqlite3_stmt = null;
+    const prep = c.sqlite3_prepare_v2(db, sql.ptr, -1, &stmt, null);
+    if (prep != c.SQLITE_OK or stmt == null) return .preparation_fail;
+    defer _ = c.sqlite3_finalize(stmt.?);
+
+    var ec = bind_u32(stmt.?, 1, tax_year);
+    if (ec != .ok) return ec;
+
+    ec = bind_text(stmt.?, 2, broker);
+    if (ec != .ok) return ec;
+
+    ec = bind_text(stmt.?, 3, ticker);
+    if (ec != .ok) return ec;
+
+    return read_loop(stmt.?, out_rows, out_cap, out_count);
+}
+
+/// DELETE one fifo_snapshot row by lot_id.
+/// Returns:
+/// - .ok if a row was deleted
+/// - .execution_fail if no row matched lot_id
+/// - .preparation_fail / binder errors for sqlite failures
+pub fn sqlite_delete_fifo_snapshot_by_lot_id(handle: DbHandle, lot_id: u32) helper.ErrorCode {
+    if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
+    if (lot_id == 0) return .invalid_argument;
+
+    const db: *c.sqlite3 = @ptrFromInt(handle);
+
+    const sql: [:0]const u8 =
+        \\DELETE FROM fifo_snapshot
+        \\WHERE lot_id = ?1;
+    ;
+
+    var stmt: ?*c.sqlite3_stmt = null;
+    const prep = c.sqlite3_prepare_v2(db, sql.ptr, -1, &stmt, null);
+    if (prep != c.SQLITE_OK or stmt == null) return .preparation_fail;
+    defer _ = c.sqlite3_finalize(stmt.?);
+
+    const ec = bind_u32(stmt.?, 1, lot_id);
+    if (ec != .ok) return ec;
+
+    const step_rc = c.sqlite3_step(stmt.?);
+    if (step_rc != c.SQLITE_DONE) return .execution_fail;
+
+    // Ensure something was actually deleted
+    if (c.sqlite3_changes(db) == 0) return .execution_fail;
+
+    return .ok;
+}
+
+/// UPDATE fifo_snapshot.qty_remaining by lot_id.
+/// Returns:
+/// - .ok if one or more rows updated (should be exactly 1)
+/// - .execution_fail if lot_id not found
+pub fn sqlite_update_fifo_snapshot_qty_remaining_by_lot_id(
+    handle: DbHandle,
+    lot_id: u32,
+    qty_remaining: f64,
+) helper.ErrorCode {
+    if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
+    if (lot_id == 0) return .invalid_argument;
+
+    const db: *c.sqlite3 = @ptrFromInt(handle);
+
+    const sql: [:0]const u8 =
+        \\UPDATE fifo_snapshot
+        \\SET qty_remaining = ?1
+        \\WHERE lot_id = ?2;
+    ;
+
+    var stmt: ?*c.sqlite3_stmt = null;
+    const prep = c.sqlite3_prepare_v2(db, sql.ptr, -1, &stmt, null);
+    if (prep != c.SQLITE_OK or stmt == null) return .preparation_fail;
+    defer _ = c.sqlite3_finalize(stmt.?);
+
+    var ec = bind_f64(stmt.?, 1, qty_remaining);
+    if (ec != .ok) return ec;
+
+    ec = bind_u32(stmt.?, 2, lot_id);
+    if (ec != .ok) return ec;
+
+    const step_rc = c.sqlite3_step(stmt.?);
+    if (step_rc != c.SQLITE_DONE) return .execution_fail;
+
+    if (c.sqlite3_changes(db) == 0) return .execution_fail;
+
+    return .ok;
 }
