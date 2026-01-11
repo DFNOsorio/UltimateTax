@@ -282,8 +282,8 @@ pub export fn zp_sqlite_read_fifo_realized_by_broker_per_year(
 }
 
 // Year processing (load-only)
-pub export fn zp_sqlite_process_year_load_only(handle: helper.DbHandle, year: u32) helper.ErrorCode {
-    return sqlite.zp_sqlite_process_year_load_only(handle, year);
+pub export fn zp_sqlite_process_year_trades_only(handle: helper.DbHandle, year: u32) helper.ErrorCode {
+    return sqlite.zp_sqlite_process_year_trades_only(handle, year);
 }
 
 // COUNT(*)

@@ -387,9 +387,9 @@ pub fn zp_sqlite_read_fifo_realized_by_broker_per_year(
 // Year processing (load-only prototype)
 // ------------------------------------------------------------
 
-pub fn zp_sqlite_process_year_load_only(handle: DbHandle, year: u32) helper.ErrorCode {
+pub fn zp_sqlite_process_year_trades_only(handle: DbHandle, year: u32) helper.ErrorCode {
     if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
-    return processYear.sqlite_process_year_load_only(handle, year);
+    return processYear.sqlite_process_year_trades_only(handle, year);
 }
 
 // ------------------------------------------------------------

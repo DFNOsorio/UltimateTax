@@ -325,7 +325,7 @@ zp_error_code zp_sqlite_read_fifo_realized_by_broker_per_year(
 
 zp_error_code zp_sqlite_close(zp_db_handle handle);
 
-zp_error_code zp_sqlite_process_year_load_only(
+zp_error_code zp_sqlite_process_year_trades_only(
     zp_db_handle handle,
     uint32_t year
 );

@@ -45,7 +45,7 @@ fn cstr0_from_buf(buf: []const u8) [*:0]const u8 {
     return @as([*:0]const u8, @ptrCast(buf.ptr));
 }
 
-pub fn sqlite_process_year_load_only(handle: DbHandle, year: u32) helper.ErrorCode {
+pub fn sqlite_process_year_trades_only(handle: DbHandle, year: u32) helper.ErrorCode {
     if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
     if (year == 0) return .invalid_argument;
 
