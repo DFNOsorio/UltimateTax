@@ -75,11 +75,12 @@ pub const zp_fifo_snapshot = extern struct {
 };
 
 pub const zp_fifo_realized = extern struct {
-    operation_id: u32,
+    realized_id: u32,
 
     broker: zp_broker_buf,
     tax_year: zp_year,
     ticker: zp_ticker,
+    country: zp_country, // IMPORTANT: must be here to match zigPortfolio.h
 
     sell_trade_id: u32,
     buy_trade_id: u32,
@@ -89,14 +90,22 @@ pub const zp_fifo_realized = extern struct {
     buy_datetime: zp_datetime,
 
     qty_matched: f64,
-    proceeds_eur: f64,
-    cost_eur: f64,
+
+    acquisition_value_eur: f64,
+    sale_value_eur: f64,
+    costs_eur: f64,
     gain_eur: f64,
 
     pub fn zero() zp_fifo_realized {
         return std.mem.zeroes(zp_fifo_realized);
     }
 };
+
+comptime {
+    if (@sizeOf(zp_fifo_realized) != 240) {
+        @compileError("zp_fifo_realized ABI size mismatch; expected 240 bytes to match zigPortfolio.h");
+    }
+}
 
 // ------------------------------------------------------------------
 // Test helpers expected by your existing test suite

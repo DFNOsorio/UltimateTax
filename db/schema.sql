@@ -86,38 +86,45 @@ ON fifo_snapshot(acq_trade_id);
 
 DROP TABLE IF EXISTS fifo_realized;
 
-CREATE TABLE fifo_realized (
-    operation_id        INTEGER PRIMARY KEY AUTOINCREMENT,
+CREATE TABLE IF NOT EXISTS fifo_realized (
+  realized_id        INTEGER PRIMARY KEY AUTOINCREMENT,
 
-    broker              TEXT NOT NULL,
-    tax_year            INTEGER NOT NULL,          -- generally the SELL year
-    ticker              TEXT NOT NULL,
+  broker             TEXT NOT NULL,
+  tax_year           INTEGER NOT NULL,
+  ticker             TEXT NOT NULL,
+  country            TEXT NOT NULL,
 
-    sell_trade_id       INTEGER NOT NULL,
-    buy_trade_id        INTEGER NOT NULL,
+  sell_trade_id      INTEGER NOT NULL,
+  buy_trade_id       INTEGER NOT NULL,
+  match_seq          INTEGER NOT NULL,
 
-    match_seq           INTEGER NOT NULL,          -- 1..N matches per sell
+  sell_datetime      TEXT NOT NULL,
+  buy_datetime       TEXT NOT NULL,
 
-    sell_datetime       TEXT NOT NULL,
-    buy_datetime        TEXT NOT NULL,
+  qty_matched        REAL NOT NULL,
 
-    qty_matched         REAL NOT NULL CHECK (qty_matched > 0.0),
+  acquisition_value_eur  REAL NOT NULL,
+  sale_value_eur         REAL NOT NULL,
+  costs_eur              REAL NOT NULL DEFAULT 0.0,
 
-    proceeds_eur        REAL NOT NULL,
-    cost_eur            REAL NOT NULL,
-    gain_eur            REAL NOT NULL,
+  gain_eur           REAL GENERATED ALWAYS AS (
+                      COALESCE(sale_value_eur, 0.0)
+                    - COALESCE(acquisition_value_eur, 0.0)
+                    - COALESCE(costs_eur, 0.0)
+                  ) VIRTUAL,
 
-    FOREIGN KEY (sell_trade_id) REFERENCES trades(id),
-    FOREIGN KEY (buy_trade_id)  REFERENCES trades(id),
+  FOREIGN KEY (sell_trade_id) REFERENCES trades(id),
+  FOREIGN KEY (buy_trade_id)  REFERENCES trades(id),
 
-    UNIQUE (sell_trade_id, match_seq)
+  UNIQUE (sell_trade_id, match_seq)
 );
+
 
 CREATE INDEX IF NOT EXISTS idx_fifo_realized_broker_year
 ON fifo_realized(broker, tax_year);
 
 CREATE INDEX IF NOT EXISTS idx_fifo_realized_broker_year_ticker
-ON fifo_realized(broker, tax_year, ticker, sell_datetime, operation_id);
+ON fifo_realized(broker, tax_year, ticker, sell_datetime, realized_id);
 
 CREATE INDEX IF NOT EXISTS idx_fifo_realized_sell_trade
 ON fifo_realized(sell_trade_id);
