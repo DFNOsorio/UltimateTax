@@ -7,3 +7,5 @@ build_output
 db/portfolio.db
 
 zig-out
+
+test_real_values

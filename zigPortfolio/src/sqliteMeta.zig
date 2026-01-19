@@ -305,3 +305,75 @@ pub fn sqlite_count_sell_trades_by_year(
 ) helper.ErrorCode {
     return sqlite_count_trades_by_year_and_side(db, year, "SELL", out_count);
 }
+
+// Uses idx_fifo_snapshot_acq_trade
+const sql_snapshot_exists_by_acq_trade: [:0]const u8 =
+    "SELECT 1 FROM fifo_snapshot WHERE acq_trade_id = ?1 LIMIT 1;";
+
+// Uses idx_fifo_realized_sell_trade
+const sql_realized_exists_by_sell_trade: [:0]const u8 =
+    "SELECT 1 FROM fifo_realized WHERE sell_trade_id = ?1 LIMIT 1;";
+
+pub fn sqlite_fifo_snapshot_exists_by_acq_trade_id(
+    handle: DbHandle,
+    acq_trade_id: u32,
+    out_exists: *bool,
+) helper.ErrorCode {
+    out_exists.* = false;
+    if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
+    if (acq_trade_id == 0) return .invalid_argument;
+
+    const db_ptr: *c.sqlite3 = @ptrFromInt(handle);
+
+    var stmt: ?*c.sqlite3_stmt = null;
+    const prep_rc = c.sqlite3_prepare_v2(db_ptr, sql_snapshot_exists_by_acq_trade.ptr, -1, &stmt, null);
+    if (prep_rc != c.SQLITE_OK or stmt == null) return .preparation_fail;
+    defer _ = c.sqlite3_finalize(stmt.?);
+
+    const bind_rc = c.sqlite3_bind_int64(stmt.?, 1, @as(c.sqlite3_int64, @intCast(acq_trade_id)));
+    if (bind_rc != c.SQLITE_OK) return .preparation_fail;
+
+    const step_rc = c.sqlite3_step(stmt.?);
+    if (step_rc == c.SQLITE_ROW) {
+        out_exists.* = true;
+        return .ok;
+    }
+    if (step_rc == c.SQLITE_DONE) {
+        out_exists.* = false;
+        return .ok;
+    }
+
+    return .read_row_fail;
+}
+
+pub fn sqlite_fifo_realized_exists_by_sell_trade_id(
+    handle: DbHandle,
+    sell_trade_id: u32,
+    out_exists: *bool,
+) helper.ErrorCode {
+    out_exists.* = false;
+    if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
+    if (sell_trade_id == 0) return .invalid_argument;
+
+    const db_ptr: *c.sqlite3 = @ptrFromInt(handle);
+
+    var stmt: ?*c.sqlite3_stmt = null;
+    const prep_rc = c.sqlite3_prepare_v2(db_ptr, sql_realized_exists_by_sell_trade.ptr, -1, &stmt, null);
+    if (prep_rc != c.SQLITE_OK or stmt == null) return .preparation_fail;
+    defer _ = c.sqlite3_finalize(stmt.?);
+
+    const bind_rc = c.sqlite3_bind_int64(stmt.?, 1, @as(c.sqlite3_int64, @intCast(sell_trade_id)));
+    if (bind_rc != c.SQLITE_OK) return .preparation_fail;
+
+    const step_rc = c.sqlite3_step(stmt.?);
+    if (step_rc == c.SQLITE_ROW) {
+        out_exists.* = true;
+        return .ok;
+    }
+    if (step_rc == c.SQLITE_DONE) {
+        out_exists.* = false;
+        return .ok;
+    }
+
+    return .read_row_fail;
+}

@@ -128,3 +128,39 @@ ON fifo_realized(broker, tax_year, ticker, sell_datetime, realized_id);
 
 CREATE INDEX IF NOT EXISTS idx_fifo_realized_sell_trade
 ON fifo_realized(sell_trade_id);
+
+
+DROP TABLE IF EXISTS dividends;
+
+CREATE TABLE IF NOT EXISTS dividends (
+    dividend_id         INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    broker              TEXT NOT NULL,
+    dividend_dt         TEXT NOT NULL,
+    ticker              TEXT NOT NULL,
+    country             TEXT NOT NULL,
+
+    per_share           REAL NOT NULL,
+    total_amount        REAL NOT NULL,
+    tax                 REAL NOT NULL,
+
+    number_of_shares    REAL GENERATED ALWAYS AS (
+                        COALESCE(total_amount, 0.0) /
+                        COALESCE(per_share, 1.0)
+                        ) VIRTUAL,
+
+    tax_rate            REAL GENERATED ALWAYS AS (
+                        100.0 *
+                        COALESCE(tax, 0.0) /
+                        COALESCE(total_amount, 1.0)
+                        ) VIRTUAL,
+
+    currency            TEXT NOT NULL,
+    conversion_rate_eur REAL NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_div_broker_ticker_dt
+ON dividends (broker, ticker, dividend_dt);
+
+CREATE INDEX IF NOT EXISTS idx_div_country_ticker_dt
+ON dividends (country, ticker, dividend_dt);

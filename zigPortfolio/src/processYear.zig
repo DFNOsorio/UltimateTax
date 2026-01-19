@@ -40,6 +40,16 @@ const PairKeyCtx = struct {
 const BuyIndexList = std.ArrayListUnmanaged(usize);
 const BuyIndexMap = std.HashMapUnmanaged(PairKey, BuyIndexList, PairKeyCtx, 80);
 
+const EPS_QTY: f64 = 1e-7;
+
+inline fn isPositive(x: f64) bool {
+    return x > EPS_QTY;
+}
+
+inline fn clampZero(x: f64) f64 {
+    return if (@abs(x) <= EPS_QTY) 0.0 else x;
+}
+
 fn cstr0_from_buf(buf: []const u8) [*:0]const u8 {
     // Your ABI buffers are NUL-terminated by your DB readers / writers.
     return @as([*:0]const u8, @ptrCast(buf.ptr));
@@ -132,12 +142,18 @@ pub fn sqlite_process_year_trades_only(handle: DbHandle, year: u32) helper.Error
 
     // ------------------------------------------------------------
     // If there are NO sells: insert all BUY snapshots and return OK.
+    // Guard against duplicates using fifo_snapshot(acq_trade_id) index.
     // ------------------------------------------------------------
     if (sell_rows == 0) {
         if (buy_snap_buf) |snaps| {
             var k: usize = 0;
             while (k < snaps.len) : (k += 1) {
                 if (!(snaps[k].qty_remaining > 0.0)) continue;
+
+                var exists: bool = false;
+                ec = meta.sqlite_fifo_snapshot_exists_by_acq_trade_id(handle, snaps[k].acq_trade_id, &exists);
+                if (ec != .ok) return ec;
+                if (exists) continue;
 
                 ec = fifoSnapshot.sqlite_insert_fifo_snapshot(handle, &snaps[k]);
                 if (ec != .ok) return ec;
@@ -167,6 +183,7 @@ pub fn sqlite_process_year_trades_only(handle: DbHandle, year: u32) helper.Error
 
     // ------------------------------------------------------------
     // 4) For each SELL:
+    //    - GUARD: skip SELL if already realized (fifo_realized sell_trade_id index)
     //    - consume DB open lots (fifo_snapshot up to year) FIFO-style
     //    - if still remaining, consume current-year BUY lots (buy_snap_buf) FIFO-style
     //    - if still remaining, error
@@ -181,6 +198,15 @@ pub fn sqlite_process_year_trades_only(handle: DbHandle, year: u32) helper.Error
 
         var sell_remaining: f64 = s.quantity;
         if (!(sell_remaining > 0.0)) continue;
+
+        // ------------------------------------------------------------
+        // GUARD: if this SELL was already processed (has any realized rows),
+        // do not re-consume lots and do not duplicate realized rows.
+        // ------------------------------------------------------------
+        var sell_already_realized: bool = false;
+        ec = meta.sqlite_fifo_realized_exists_by_sell_trade_id(handle, s.id, &sell_already_realized);
+        if (ec != .ok) return ec;
+        if (sell_already_realized) continue;
 
         // Base realized fields for this SELL
         realized_trade.broker = s.broker;
@@ -224,7 +250,7 @@ pub fn sqlite_process_year_trades_only(handle: DbHandle, year: u32) helper.Error
             if (got_lots != open_lot_rows) return .read_row_fail;
 
             var li: usize = 0;
-            while (li < got_lots and sell_remaining > 0.0) : (li += 1) {
+            while (li < got_lots and isPositive(sell_remaining)) : (li += 1) {
                 const lot = &lots[li];
                 if (!(lot.qty_remaining > 0.0)) continue;
 
@@ -232,6 +258,7 @@ pub fn sqlite_process_year_trades_only(handle: DbHandle, year: u32) helper.Error
                     if (sell_remaining < lot.qty_remaining) sell_remaining else lot.qty_remaining;
 
                 sell_remaining -= matched;
+                sell_remaining = clampZero(sell_remaining);
 
                 const new_lot_remaining: f64 = lot.qty_remaining - matched;
                 const lot_fully_depleted = (new_lot_remaining <= 0.0);
@@ -268,13 +295,13 @@ pub fn sqlite_process_year_trades_only(handle: DbHandle, year: u32) helper.Error
         // -----------------------------
         // 4b) Consume current-year BUY lots (in-memory only)
         // -----------------------------
-        if (sell_remaining > 0.0) {
+        if (isPositive(sell_remaining)) {
             if (buy_snap_buf) |snaps| {
                 const key = PairKey.fromTrade(&s);
 
                 if (buy_map.get(key)) |idx_list| {
                     var bi: usize = 0;
-                    while (bi < idx_list.items.len and sell_remaining > 0.0) : (bi += 1) {
+                    while (bi < idx_list.items.len and isPositive(sell_remaining)) : (bi += 1) {
                         const snap_idx = idx_list.items[bi];
                         if (snap_idx >= snaps.len) continue;
 
@@ -285,6 +312,7 @@ pub fn sqlite_process_year_trades_only(handle: DbHandle, year: u32) helper.Error
                             if (sell_remaining < lot.qty_remaining) sell_remaining else lot.qty_remaining;
 
                         sell_remaining -= matched;
+                        sell_remaining = clampZero(sell_remaining);
 
                         const new_lot_remaining: f64 = lot.qty_remaining - matched;
                         const lot_fully_depleted = (new_lot_remaining <= 0.0);
@@ -321,7 +349,7 @@ pub fn sqlite_process_year_trades_only(handle: DbHandle, year: u32) helper.Error
         // -----------------------------
         // 4c) Hard fail if still unmatched
         // -----------------------------
-        if (sell_remaining > 0.0) {
+        if (isPositive(sell_remaining)) {
             std.debug.print(
                 "ERROR: Unmatched SELL remaining qty. year={d} broker={s} ticker={s} sell_id={d} remaining={d}\n",
                 .{
@@ -338,11 +366,17 @@ pub fn sqlite_process_year_trades_only(handle: DbHandle, year: u32) helper.Error
 
     // ------------------------------------------------------------
     // 5) Insert remaining BUY snapshots (only those with qty_remaining > 0)
+    // Guard against duplicates using fifo_snapshot(acq_trade_id) index.
     // ------------------------------------------------------------
     if (buy_snap_buf) |snaps| {
         var k: usize = 0;
         while (k < snaps.len) : (k += 1) {
             if (!(snaps[k].qty_remaining > 0.0)) continue;
+
+            var exists: bool = false;
+            ec = meta.sqlite_fifo_snapshot_exists_by_acq_trade_id(handle, snaps[k].acq_trade_id, &exists);
+            if (ec != .ok) return ec;
+            if (exists) continue;
 
             ec = fifoSnapshot.sqlite_insert_fifo_snapshot(handle, &snaps[k]);
             if (ec != .ok) return ec;
