@@ -199,7 +199,7 @@ pub fn sqlite_read_fifo_realized_all(
         \\       qty_matched,
         \\       acquisition_value_eur, sale_value_eur, costs_eur, gain_eur
         \\FROM fifo_realized
-        \\ORDER BY broker, tax_year, ticker, sell_datetime, realized_id;
+        \\ORDER BY tax_year, broker, ticker, sell_datetime, realized_id;
     ;
 
     var stmt: ?*c.sqlite3_stmt = null;

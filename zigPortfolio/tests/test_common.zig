@@ -32,6 +32,32 @@ pub const schema_sql: [:0]const u8 =
     \\);
     \\CREATE INDEX idx_trades_datetime ON trades(trade_datetime);
     \\CREATE INDEX idx_trades_ticker_datetime ON trades(ticker, trade_datetime);
+    \\DROP TABLE IF EXISTS dividends;
+    \\CREATE TABLE dividends (
+    \\    dividend_id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    \\    broker              TEXT NOT NULL,
+    \\    dividend_dt         TEXT NOT NULL,
+    \\    ticker              TEXT NOT NULL,
+    \\    country             TEXT NOT NULL,
+    \\    per_share           REAL NOT NULL,
+    \\    total_amount        REAL NOT NULL,
+    \\    tax                 REAL NOT NULL,
+    \\    number_of_shares    REAL GENERATED ALWAYS AS (
+    \\                        COALESCE(total_amount, 0.0) /
+    \\                        COALESCE(per_share, 1.0)
+    \\                        ) VIRTUAL,
+    \\    tax_rate            REAL GENERATED ALWAYS AS (
+    \\                        100.0 *
+    \\                        COALESCE(tax, 0.0) /
+    \\                        COALESCE(total_amount, 1.0)
+    \\                        ) VIRTUAL,
+    \\    currency            TEXT NOT NULL,
+    \\    conversion_rate_eur REAL NOT NULL
+    \\);
+    \\CREATE INDEX IF NOT EXISTS idx_div_broker_ticker_dt
+    \\ON dividends (broker, ticker, dividend_dt);
+    \\CREATE INDEX IF NOT EXISTS idx_div_country_ticker_dt
+    \\ON dividends (country, ticker, dividend_dt);
 ;
 
 pub fn execSql(db: *c.sqlite3, sql: [:0]const u8) !void {
@@ -100,26 +126,38 @@ pub const fifo_schema_sql: [:0]const u8 =
     \\ON fifo_snapshot(broker, tax_year, ticker, acq_datetime, lot_id);
     \\
     \\DROP TABLE IF EXISTS fifo_realized;
-    \\CREATE TABLE fifo_realized (
-    \\    operation_id        INTEGER PRIMARY KEY AUTOINCREMENT,
-    \\    broker              TEXT NOT NULL,
-    \\    tax_year            INTEGER NOT NULL,
-    \\    ticker              TEXT NOT NULL,
-    \\    sell_trade_id       INTEGER NOT NULL,
-    \\    buy_trade_id        INTEGER NOT NULL,
-    \\    match_seq           INTEGER NOT NULL,
-    \\    sell_datetime       TEXT NOT NULL,
-    \\    buy_datetime        TEXT NOT NULL,
-    \\    qty_matched         REAL NOT NULL CHECK (qty_matched > 0.0),
-    \\    proceeds_eur        REAL NOT NULL,
-    \\    cost_eur            REAL NOT NULL,
-    \\    gain_eur            REAL NOT NULL,
-    \\    FOREIGN KEY (sell_trade_id) REFERENCES trades(id),
-    \\    FOREIGN KEY (buy_trade_id)  REFERENCES trades(id),
-    \\    UNIQUE (sell_trade_id, match_seq)
+    \\CREATE TABLE IF NOT EXISTS fifo_realized (
+    \\  realized_id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    \\
+    \\  broker             TEXT NOT NULL,
+    \\  tax_year           INTEGER NOT NULL,
+    \\  ticker             TEXT NOT NULL,
+    \\  country            TEXT NOT NULL,
+    \\
+    \\  sell_trade_id      INTEGER NOT NULL,
+    \\  buy_trade_id       INTEGER NOT NULL,
+    \\  match_seq          INTEGER NOT NULL,
+    \\
+    \\  sell_datetime      TEXT NOT NULL,
+    \\  buy_datetime       TEXT NOT NULL,
+    \\
+    \\  qty_matched        REAL NOT NULL,
+    \\
+    \\  acquisition_value_eur  REAL NOT NULL,
+    \\  sale_value_eur         REAL NOT NULL,
+    \\  costs_eur              REAL NOT NULL DEFAULT 0.0,
+    \\
+    \\  gain_eur           REAL GENERATED ALWAYS AS (
+    \\                      COALESCE(sale_value_eur, 0.0)
+    \\                    - COALESCE(acquisition_value_eur, 0.0)
+    \\                    - COALESCE(costs_eur, 0.0)
+    \\                  ) VIRTUAL,
+    \\
+    \\  FOREIGN KEY (sell_trade_id) REFERENCES trades(id),
+    \\  FOREIGN KEY (buy_trade_id)  REFERENCES trades(id),
+    \\
+    \\  UNIQUE (sell_trade_id, match_seq)
     \\);
-    \\CREATE INDEX IF NOT EXISTS idx_fifo_realized_broker_year_ticker
-    \\ON fifo_realized(broker, tax_year, ticker, sell_datetime, operation_id);
 ;
 
 pub fn ensureFifoTables(handle: helper.DbHandle) !void {

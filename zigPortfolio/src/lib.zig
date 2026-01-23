@@ -316,6 +316,39 @@ pub export fn zp_sqlite_count_sell_trades_by_year(
     return sqlite.zp_sqlite_count_sell_trades_by_year(db, year, out_count);
 }
 
+pub export fn zp_sqlite_insert_dividend(
+    handle: helper.DbHandle,
+    broker: ?[*:0]const u8,
+    dividend_dt: ?[*:0]const u8,
+    ticker: ?[*:0]const u8,
+    country: ?[*:0]const u8,
+    per_share: f64,
+    total_amount: f64,
+    tax: f64,
+    currency: ?[*:0]const u8,
+    conversion_rate_eur: f64,
+) helper.ErrorCode {
+    return sqlite.zp_sqlite_insert_dividend(
+        handle,
+        broker,
+        dividend_dt,
+        ticker,
+        country,
+        per_share,
+        total_amount,
+        tax,
+        currency,
+        conversion_rate_eur,
+    );
+}
+
+pub export fn zp_sqlite_insert_dividend_struct(
+    handle: helper.DbHandle,
+    d: ?*const schema.zp_dividend,
+) helper.ErrorCode {
+    return sqlite.zp_sqlite_insert_dividend_struct(handle, d);
+}
+
 // ------------------------------------------------------------
 // Versioning (rooted here)
 // ------------------------------------------------------------

@@ -107,6 +107,34 @@ comptime {
     }
 }
 
+pub const zp_dividend = extern struct {
+    dividend_id: u32,
+
+    broker: zp_broker_buf,
+    dividend_dt: zp_datetime,
+    ticker: zp_ticker,
+    country: zp_country,
+
+    per_share: f64,
+    total_amount: f64,
+    tax: f64,
+
+    currency: zp_currency,
+    conversion_rate_eur: f64,
+
+    pub fn zero() zp_dividend {
+        var d = std.mem.zeroes(zp_dividend);
+
+        // No DB defaults in your schema for these fields; keep NaN so missing values fail fast.
+        d.per_share = std.math.nan(f64);
+        d.total_amount = std.math.nan(f64);
+        d.tax = std.math.nan(f64);
+        d.conversion_rate_eur = std.math.nan(f64);
+
+        return d;
+    }
+};
+
 // ------------------------------------------------------------------
 // Test helpers expected by your existing test suite
 // ------------------------------------------------------------------
@@ -125,4 +153,8 @@ pub fn clearFifoSnapshot(r: *zp_fifo_snapshot) void {
 
 pub fn clearFifoRealized(r: *zp_fifo_realized) void {
     r.* = zp_fifo_realized.zero();
+}
+
+pub fn clearDividend(d: *zp_dividend) void {
+    d.* = zp_dividend.zero();
 }

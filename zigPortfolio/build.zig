@@ -1,4 +1,5 @@
 const std = @import("std");
+
 const Build = std.Build;
 
 // Read build.zig.zon for version info
@@ -21,6 +22,15 @@ fn addBundledSqlite(b: *Build, c: *std.Build.Step.Compile) void {
     c.linkLibC();
 }
 
+// IMPORTANT: @cImport() uses the MODULE include paths/macros, not only the compile step.
+// So we must also provide sqlite headers/macros to modules that do @cInclude("sqlite3.h").
+fn addSqliteHeadersToModule(b: *Build, m: *std.Build.Module) void {
+    const sqlite_dir = b.path("../vendor/sqlite");
+    m.addIncludePath(sqlite_dir);
+    m.addCMacro("SQLITE_THREADSAFE", "1");
+    m.addCMacro("SQLITE_OMIT_LOAD_EXTENSION", "1");
+}
+
 pub fn build(b: *Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -31,6 +41,9 @@ pub fn build(b: *Build) void {
         .target = target,
         .optimize = optimize,
     });
+
+    // Ensure @cImport("sqlite3.h") works for library code
+    addSqliteHeadersToModule(b, lib_mod);
 
     const lib = b.addLibrary(.{
         .name = "zigPortfolio",
@@ -68,6 +81,9 @@ pub fn build(b: *Build) void {
     });
     api_mod.addOptions("pkgmeta", opts);
 
+    // Ensure @cImport("sqlite3.h") works for api module used by tests
+    addSqliteHeadersToModule(b, api_mod);
+
     // ---- Normal tests (quiet) ----
     const testopts_quiet = b.addOptions();
     testopts_quiet.addOption(bool, "verbose_test_names", false);
@@ -79,6 +95,9 @@ pub fn build(b: *Build) void {
     });
     tests_mod.addImport("api", api_mod);
     tests_mod.addOptions("testopts", testopts_quiet);
+
+    // Optional (harmless): if any test file uses @cImport directly
+    addSqliteHeadersToModule(b, tests_mod);
 
     const unit_tests = b.addTest(.{
         .root_module = tests_mod,
@@ -102,6 +121,9 @@ pub fn build(b: *Build) void {
     });
     tests_mod_verbose.addImport("api", api_mod);
     tests_mod_verbose.addOptions("testopts", testopts_verbose);
+
+    // Optional (harmless): if any test file uses @cImport directly
+    addSqliteHeadersToModule(b, tests_mod_verbose);
 
     const unit_tests_verbose = b.addTest(.{
         .root_module = tests_mod_verbose,

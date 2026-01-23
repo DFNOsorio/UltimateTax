@@ -8,6 +8,7 @@ const insert = @import("insertTrades.zig");
 const read = @import("readTrades.zig");
 const meta = @import("sqliteMeta.zig");
 const processYear = @import("processYear.zig");
+const insertDiv = @import("insertDividends.zig");
 
 pub const c = @cImport({
     @cInclude("sqlite3.h");
@@ -381,6 +382,45 @@ pub fn zp_sqlite_read_fifo_realized_by_broker_per_year(
     if (out_count == null) return .invalid_argument;
 
     return fifoRealized.sqlite_read_fifo_realized_by_broker_per_year(handle, tax_year, broker.?, out_rows, out_cap, out_count.?);
+}
+
+pub fn zp_sqlite_insert_dividend(
+    handle: DbHandle,
+    broker: ?[*:0]const u8,
+    dividend_dt: ?[*:0]const u8,
+    ticker: ?[*:0]const u8,
+    country: ?[*:0]const u8,
+    per_share: f64,
+    total_amount: f64,
+    tax: f64,
+    currency: ?[*:0]const u8,
+    conversion_rate_eur: f64,
+) helper.ErrorCode {
+    if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
+    if (broker == null or dividend_dt == null or ticker == null or country == null or currency == null) return .invalid_argument;
+
+    return insertDiv.sqlite_insert_dividend(
+        handle,
+        broker.?,
+        dividend_dt.?,
+        ticker.?,
+        country.?,
+        per_share,
+        total_amount,
+        tax,
+        currency.?,
+        conversion_rate_eur,
+    );
+}
+
+pub fn zp_sqlite_insert_dividend_struct(
+    handle: DbHandle,
+    d: ?*const schema.zp_dividend,
+) helper.ErrorCode {
+    if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
+    if (d == null) return .invalid_argument;
+
+    return insertDiv.sqlite_insert_dividend_struct(handle, d.?);
 }
 
 // ------------------------------------------------------------

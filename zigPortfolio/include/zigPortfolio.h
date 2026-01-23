@@ -112,6 +112,23 @@ typedef struct zp_fifo_realized {
     double   gain_eur;                              /* output (GENERATED: sale - acquisition - costs) */
 } zp_fifo_realized;
 
+typedef struct zp_dividend {
+    uint32_t dividend_id;
+
+    char broker[ZP_BROKER_LEN];
+    char dividend_dt[ZP_DATETIME_LEN];
+    char ticker[ZP_TICKER_LEN];
+    char country[ZP_COUNTRY_LEN];
+
+    double per_share;
+    double total_amount;
+    double tax;
+
+    char currency[ZP_CURRENCY_LEN];
+    double conversion_rate_eur;
+} zp_dividend;
+
+
 
 zp_error_code zp_sqlite_open(const char *path, zp_db_handle *out_handle);
 
@@ -329,6 +346,23 @@ zp_error_code zp_sqlite_process_year_trades_only(
     zp_db_handle handle,
     uint32_t year
 );
+
+zp_error_code zp_sqlite_insert_dividend(
+    zp_db_handle handle,
+    const char* broker,
+    const char* dividend_dt,
+    const char* ticker,
+    const char* country,
+    double per_share,
+    double total_amount,
+    double tax,
+    const char* currency,
+    double conversion_rate_eur);
+
+zp_error_code zp_sqlite_insert_dividend_struct(
+    zp_db_handle handle,
+    const zp_dividend* d);
+
 
 typedef enum {
     ZP_TABLE_TRADES = 0,

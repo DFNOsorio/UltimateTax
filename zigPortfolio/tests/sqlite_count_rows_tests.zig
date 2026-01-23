@@ -88,11 +88,16 @@ test "sqlite_count_rows – fifo tables" {
     // fifo_realized row
     try common.execSql(db_ptr,
         \\INSERT INTO fifo_realized
-        \\(broker, tax_year, ticker, sell_trade_id, buy_trade_id,
+        \\(broker, tax_year, ticker, country,
+        \\ sell_trade_id, buy_trade_id,
         \\ match_seq, sell_datetime, buy_datetime,
-        \\ qty_matched, proceeds_eur, cost_eur, gain_eur)
-        \\VALUES ('IBKR', 2022, 'AAPL', 2, 1, 1,
-        \\ '2022-06-01', '2022-01-01', 10.0, 1200.0, 1000.0, 200.0);
+        \\ qty_matched,
+        \\ acquisition_value_eur, sale_value_eur, costs_eur)
+        \\VALUES ('IBKR', 2022, 'AAPL', 'US',
+        \\        2, 1,
+        \\        1, '2022-06-01', '2022-01-01',
+        \\        10.0,
+        \\        1000.0, 1200.0, 0.0);
     );
 
     var n: usize = 0;
