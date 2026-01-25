@@ -482,18 +482,88 @@ pub fn zp_sqlite_count_dividends(
 ) helper.ErrorCode {
     if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
     if (out_count == null) return .invalid_argument;
-
     return readDiv.sqlite_count_dividends_all(handle, out_count.?);
+}
+
+pub fn zp_sqlite_count_dividends_by_year(
+    handle: DbHandle,
+    year: u32,
+    out_count: ?*usize,
+) helper.ErrorCode {
+    if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
+    if (out_count == null) return .invalid_argument;
+    return readDiv.sqlite_count_dividends_by_year(handle, year, out_count.?);
+}
+
+pub fn zp_sqlite_count_dividends_by_country(
+    handle: DbHandle,
+    country: ?[*:0]const u8,
+    out_count: ?*usize,
+) helper.ErrorCode {
+    if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
+    if (country == null) return .invalid_argument;
+    if (out_count == null) return .invalid_argument;
+    return readDiv.sqlite_count_dividends_by_country(handle, country.?, out_count.?);
+}
+
+pub fn zp_sqlite_count_dividends_by_year_and_country(
+    handle: DbHandle,
+    year: u32,
+    country: ?[*:0]const u8,
+    out_count: ?*usize,
+) helper.ErrorCode {
+    if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
+    if (country == null) return .invalid_argument;
+    if (out_count == null) return .invalid_argument;
+    return readDiv.sqlite_count_dividends_by_year_and_country(handle, year, country.?, out_count.?);
 }
 
 pub fn zp_sqlite_read_all_dividends(
     handle: DbHandle,
-    out_dividends: ?[*]schema.zp_dividend,
+    out_rows: ?[*]schema.zp_dividend,
     out_cap: usize,
     out_count: ?*usize,
 ) helper.ErrorCode {
     if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
     if (out_count == null) return .invalid_argument;
+    return readDiv.sqlite_read_all_dividends(handle, out_rows, out_cap, out_count.?);
+}
 
-    return readDiv.sqlite_read_all_dividends(handle, out_dividends, out_cap, out_count.?);
+pub fn zp_sqlite_read_dividends_by_year(
+    handle: DbHandle,
+    year: u32,
+    out_rows: ?[*]schema.zp_dividend,
+    out_cap: usize,
+    out_count: ?*usize,
+) helper.ErrorCode {
+    if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
+    if (out_count == null) return .invalid_argument;
+    return readDiv.sqlite_read_dividends_by_year(handle, year, out_rows, out_cap, out_count.?);
+}
+
+pub fn zp_sqlite_read_dividends_by_country(
+    handle: DbHandle,
+    country: ?[*:0]const u8,
+    out_rows: ?[*]schema.zp_dividend,
+    out_cap: usize,
+    out_count: ?*usize,
+) helper.ErrorCode {
+    if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
+    if (country == null) return .invalid_argument;
+    if (out_count == null) return .invalid_argument;
+    return readDiv.sqlite_read_dividends_by_country(handle, country.?, out_rows, out_cap, out_count.?);
+}
+
+pub fn zp_sqlite_read_dividends_by_year_and_country(
+    handle: DbHandle,
+    year: u32,
+    country: ?[*:0]const u8,
+    out_rows: ?[*]schema.zp_dividend,
+    out_cap: usize,
+    out_count: ?*usize,
+) helper.ErrorCode {
+    if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
+    if (country == null) return .invalid_argument;
+    if (out_count == null) return .invalid_argument;
+    return readDiv.sqlite_read_dividends_by_year_and_country(handle, year, country.?, out_rows, out_cap, out_count.?);
 }

@@ -11,4 +11,5 @@ comptime {
     _ = @import("sqlite_count_rows_tests.zig");
     _ = @import("insert_dividend_tests.zig");
     _ = @import("read_dividends_tests.zig");
+    _ = @import("read_dividends_year_country_tests.zig");
 }

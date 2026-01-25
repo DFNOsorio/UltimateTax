@@ -356,13 +356,69 @@ pub export fn zp_sqlite_count_dividends(
     return sqlite.zp_sqlite_count_dividends(handle, out_count);
 }
 
+pub export fn zp_sqlite_count_dividends_by_year(
+    handle: helper.DbHandle,
+    year: u32,
+    out_count: ?*usize,
+) helper.ErrorCode {
+    return sqlite.zp_sqlite_count_dividends_by_year(handle, year, out_count);
+}
+
+pub export fn zp_sqlite_count_dividends_by_country(
+    handle: helper.DbHandle,
+    country: ?[*:0]const u8,
+    out_count: ?*usize,
+) helper.ErrorCode {
+    return sqlite.zp_sqlite_count_dividends_by_country(handle, country, out_count);
+}
+
+pub export fn zp_sqlite_count_dividends_by_year_and_country(
+    handle: helper.DbHandle,
+    year: u32,
+    country: ?[*:0]const u8,
+    out_count: ?*usize,
+) helper.ErrorCode {
+    return sqlite.zp_sqlite_count_dividends_by_year_and_country(handle, year, country, out_count);
+}
+
 pub export fn zp_sqlite_read_all_dividends(
     handle: helper.DbHandle,
-    out_dividends: ?[*]schema.zp_dividend,
+    out_rows: ?[*]schema.zp_dividend,
     out_cap: usize,
     out_count: ?*usize,
 ) helper.ErrorCode {
-    return sqlite.zp_sqlite_read_all_dividends(handle, out_dividends, out_cap, out_count);
+    return sqlite.zp_sqlite_read_all_dividends(handle, out_rows, out_cap, out_count);
+}
+
+pub export fn zp_sqlite_read_dividends_by_year(
+    handle: helper.DbHandle,
+    year: u32,
+    out_rows: ?[*]schema.zp_dividend,
+    out_cap: usize,
+    out_count: ?*usize,
+) helper.ErrorCode {
+    return sqlite.zp_sqlite_read_dividends_by_year(handle, year, out_rows, out_cap, out_count);
+}
+
+pub export fn zp_sqlite_read_dividends_by_country(
+    handle: helper.DbHandle,
+    country: ?[*:0]const u8,
+    out_rows: ?[*]schema.zp_dividend,
+    out_cap: usize,
+    out_count: ?*usize,
+) helper.ErrorCode {
+    return sqlite.zp_sqlite_read_dividends_by_country(handle, country, out_rows, out_cap, out_count);
+}
+
+pub export fn zp_sqlite_read_dividends_by_year_and_country(
+    handle: helper.DbHandle,
+    year: u32,
+    country: ?[*:0]const u8,
+    out_rows: ?[*]schema.zp_dividend,
+    out_cap: usize,
+    out_count: ?*usize,
+) helper.ErrorCode {
+    return sqlite.zp_sqlite_read_dividends_by_year_and_country(handle, year, country, out_rows, out_cap, out_count);
 }
 
 // ------------------------------------------------------------

@@ -364,17 +364,64 @@ zp_error_code zp_sqlite_insert_dividend_struct(
     const zp_dividend* d);
 
 /* Dividends: count + read-all */
+/* Dividends: count */
 zp_error_code zp_sqlite_count_dividends(
     zp_db_handle handle,
     size_t* out_count
 );
 
-zp_error_code zp_sqlite_read_all_dividends(
+zp_error_code zp_sqlite_count_dividends_by_year(
     zp_db_handle handle,
-    zp_dividend* out_dividends, /* nullable */
-    size_t out_cap,
+    uint32_t year,
     size_t* out_count
 );
+
+zp_error_code zp_sqlite_count_dividends_by_country(
+    zp_db_handle handle,
+    const char* country,
+    size_t* out_count
+);
+
+zp_error_code zp_sqlite_count_dividends_by_year_and_country(
+    zp_db_handle handle,
+    uint32_t year,
+    const char* country,
+    size_t* out_count
+);
+
+/* Dividends: read */
+zp_error_code zp_sqlite_read_all_dividends(
+    zp_db_handle handle,
+    zp_dividend* out_rows,     /* nullable */
+    size_t out_cap,
+    size_t* out_count          /* required */
+);
+
+zp_error_code zp_sqlite_read_dividends_by_year(
+    zp_db_handle handle,
+    uint32_t year,
+    zp_dividend* out_rows,     /* nullable */
+    size_t out_cap,
+    size_t* out_count          /* required */
+);
+
+zp_error_code zp_sqlite_read_dividends_by_country(
+    zp_db_handle handle,
+    const char* country,
+    zp_dividend* out_rows,     /* nullable */
+    size_t out_cap,
+    size_t* out_count          /* required */
+);
+
+zp_error_code zp_sqlite_read_dividends_by_year_and_country(
+    zp_db_handle handle,
+    uint32_t year,
+    const char* country,
+    zp_dividend* out_rows,     /* nullable */
+    size_t out_cap,
+    size_t* out_count          /* required */
+);
+
 
 
 typedef enum {
