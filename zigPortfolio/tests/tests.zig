@@ -10,4 +10,5 @@ comptime {
     _ = @import("fifo_realized_tests.zig");
     _ = @import("sqlite_count_rows_tests.zig");
     _ = @import("insert_dividend_tests.zig");
+    _ = @import("read_dividends_tests.zig");
 }

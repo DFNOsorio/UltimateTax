@@ -363,6 +363,19 @@ zp_error_code zp_sqlite_insert_dividend_struct(
     zp_db_handle handle,
     const zp_dividend* d);
 
+/* Dividends: count + read-all */
+zp_error_code zp_sqlite_count_dividends(
+    zp_db_handle handle,
+    size_t* out_count
+);
+
+zp_error_code zp_sqlite_read_all_dividends(
+    zp_db_handle handle,
+    zp_dividend* out_dividends, /* nullable */
+    size_t out_cap,
+    size_t* out_count
+);
+
 
 typedef enum {
     ZP_TABLE_TRADES = 0,

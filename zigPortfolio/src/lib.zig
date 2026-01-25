@@ -349,6 +349,22 @@ pub export fn zp_sqlite_insert_dividend_struct(
     return sqlite.zp_sqlite_insert_dividend_struct(handle, d);
 }
 
+pub export fn zp_sqlite_count_dividends(
+    handle: helper.DbHandle,
+    out_count: ?*usize,
+) helper.ErrorCode {
+    return sqlite.zp_sqlite_count_dividends(handle, out_count);
+}
+
+pub export fn zp_sqlite_read_all_dividends(
+    handle: helper.DbHandle,
+    out_dividends: ?[*]schema.zp_dividend,
+    out_cap: usize,
+    out_count: ?*usize,
+) helper.ErrorCode {
+    return sqlite.zp_sqlite_read_all_dividends(handle, out_dividends, out_cap, out_count);
+}
+
 // ------------------------------------------------------------
 // Versioning (rooted here)
 // ------------------------------------------------------------

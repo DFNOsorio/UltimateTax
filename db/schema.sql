@@ -164,3 +164,6 @@ ON dividends (broker, ticker, dividend_dt);
 
 CREATE INDEX IF NOT EXISTS idx_div_country_ticker_dt
 ON dividends (country, ticker, dividend_dt);
+
+CREATE INDEX IF NOT EXISTS idx_div_dt
+ON dividends(dividend_dt, dividend_id);

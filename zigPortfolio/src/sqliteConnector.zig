@@ -9,6 +9,7 @@ const read = @import("readTrades.zig");
 const meta = @import("sqliteMeta.zig");
 const processYear = @import("processYear.zig");
 const insertDiv = @import("insertDividends.zig");
+const readDiv = @import("readDividends.zig");
 
 pub const c = @cImport({
     @cInclude("sqlite3.h");
@@ -473,4 +474,26 @@ pub fn zp_sqlite_count_sell_trades_by_year(
     if (db == helper.INVALID_DB_HANDLE) return .invalid_argument;
     if (out_count == null) return helper.ErrorCode.preparation_fail;
     return meta.sqlite_count_sell_trades_by_year(db, year, out_count.?);
+}
+
+pub fn zp_sqlite_count_dividends(
+    handle: DbHandle,
+    out_count: ?*usize,
+) helper.ErrorCode {
+    if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
+    if (out_count == null) return .invalid_argument;
+
+    return readDiv.sqlite_count_dividends_all(handle, out_count.?);
+}
+
+pub fn zp_sqlite_read_all_dividends(
+    handle: DbHandle,
+    out_dividends: ?[*]schema.zp_dividend,
+    out_cap: usize,
+    out_count: ?*usize,
+) helper.ErrorCode {
+    if (handle == helper.INVALID_DB_HANDLE) return .invalid_argument;
+    if (out_count == null) return .invalid_argument;
+
+    return readDiv.sqlite_read_all_dividends(handle, out_dividends, out_cap, out_count.?);
 }
