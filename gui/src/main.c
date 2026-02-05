@@ -1,56 +1,97 @@
 #include "raylib.h"
 #include "ray_dropdown.h"
+#include "ray_pages.h"
 #include "ray_general.h"
 #include <stdint.h>
 
 
-
-
-
 int main(void) {
-    InitWindow(900, 500, "Dropdown demo");
+    const int startW = 1100;
+    const int startH = 600;
+
+    SetConfigFlags(FLAG_WINDOW_RESIZABLE);
+    InitWindow(startW, startH, "Raylib - Layout Segmentation");
     SetTargetFPS(60);
 
-    const char* years[] = { "All Years", "2025", "2024", "2023", "2022", "2021", "2020" };
+    // For now: fixed expanded sidebar width (we’ll animate/toggle later)
+    float navWidth = 260.0f;
+    float gap = 16.0f;
 
-    rayDropDownStyle style = ray_dropdown_style_with_colors(
-        (Color){245,246,248,255},   // bg
-        (Color){150,170,210,255},   // border
-        (Color){60,130,220,255}     // selection
-    );
+    int lastW = 0, lastH = 0;
+    AppLayout layout = {0};
 
-    Font ui = ray_load_system_font_or_default("verdana.ttf", 48);
-
-    SetTextureFilter(ui.texture, TEXTURE_FILTER_BILINEAR);
-
-    ray_dropdown_style_change_font(&style, ui);
-
-    rayDropdown dd;
-    ray_dropdown_init_ex(
-        &dd,
-        (Rectangle){40, 40, 260, 44},
-        "Filter by year",
-        years,
-        (int32_t) (sizeof(years)/sizeof(years[0])),
-        &style);
-
-
-    while (!WindowShouldClose()) {
-        ray_dropdown_update(&dd);
-
+    while (!WindowShouldClose())
+    {
         BeginDrawing();
-        ClearBackground((Color){ 235, 240, 245, 255 });
 
-        ray_dropdown_draw(&dd);
+        int w = GetScreenWidth();
+        int h = GetScreenHeight();
+
+        if (w != lastW || h != lastH) {
+            layout = ray_compute_layout(w, h, navWidth, gap);
+            lastW = w;
+            lastH = h;
+        }
+
+        ClearBackground(RAYWHITE);
+
+        DrawRectangleRec(layout.nav, (Color){ 30, 34, 38, 255 });
+        DrawRectangleRec(layout.content, (Color){ 235, 237, 240, 255 });
 
         EndDrawing();
     }
 
-    UnloadFont(ui);
+
 
     CloseWindow();
-    return 0;
 }
+
+
+
+// int main(void) {
+//     InitWindow(900, 500, "Dropdown demo");
+//     SetTargetFPS(60);
+
+//     const char* years[] = { "All Years", "2025", "2024", "2023", "2022", "2021", "2020" };
+
+//     rayDropDownStyle style = ray_dropdown_style_with_colors(
+//         (Color){245,246,248,255},   // bg
+//         (Color){150,170,210,255},   // border
+//         (Color){60,130,220,255}     // selection
+//     );
+
+//     Font ui = ray_load_system_font_or_default("verdana.ttf", 48);
+
+//     SetTextureFilter(ui.texture, TEXTURE_FILTER_BILINEAR);
+
+//     ray_dropdown_style_change_font(&style, ui);
+
+//     rayDropdown dd;
+//     ray_dropdown_init_ex(
+//         &dd,
+//         (Rectangle){40, 40, 260, 44},
+//         "Filter by year",
+//         years,
+//         (int32_t) (sizeof(years)/sizeof(years[0])),
+//         &style);
+
+
+//     while (!WindowShouldClose()) {
+//         ray_dropdown_update(&dd);
+
+//         BeginDrawing();
+//         ClearBackground((Color){ 235, 240, 245, 255 });
+
+//         ray_dropdown_draw(&dd);
+
+//         EndDrawing();
+//     }
+
+//     UnloadFont(ui);
+
+//     CloseWindow();
+//     return 0;
+// }
 
     // int main(void)
     // {
