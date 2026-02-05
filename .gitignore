@@ -11,3 +11,5 @@ zig-out
 test_real_values
 
 gui/build
+
+.vs

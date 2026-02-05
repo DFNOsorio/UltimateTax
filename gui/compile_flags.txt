@@ -1,3 +1,6 @@
 -std=c11
--Idependencies/raylib/include
+-Idependencies/clay
+-Idependencies/sokol
+-Idependencies/fontstash
+-Idependencies/stb
 -Iheaders
