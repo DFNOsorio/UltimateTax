@@ -6,10 +6,10 @@
 #include <string.h>
 
 // Persistent Page A UI state
-static Dropdown_State g_dd = { .isOpen = false, .selectedIndex = 0 };
+static Dropdown_State g_dd = { .isOpen = false, .selectedIndex = -1 };
 
 // Options must live long-term (static is perfect)
-static const char* g_opts[] = { "Option 1", "Option 2", "Option 3", "Option 4" };
+static const char* g_opts[] = { "2019", "2020", "2021", "2022", "2023", "2024", "2025" };
 
 // IMPORTANT: this buffer must be persistent (NOT stack), because Clay may render after build returns
 static char g_sel_buf[256];
@@ -57,8 +57,11 @@ void page_a_build(void) {
         }
 
         // Selection text box (persistent buffer!)
-        const char* sel = g_opts[g_dd.selectedIndex] ? g_opts[g_dd.selectedIndex] : "";
-        (void)snprintf(g_sel_buf, sizeof(g_sel_buf), "Selected: %s", sel);
+        const char* sel_name = "None";
+        if (g_dd.selectedIndex >= 0) {
+            sel_name = g_opts[g_dd.selectedIndex] ? g_opts[g_dd.selectedIndex] : "";
+        }
+        (void)snprintf(g_sel_buf, sizeof(g_sel_buf), "Selected: %s", sel_name);
 
         Clay_String sel_text = (Clay_String){ .chars = g_sel_buf, .length = (int)strlen(g_sel_buf) };
 

@@ -58,7 +58,7 @@ void dropdown_build(const Dropdown_Config* cfg, Dropdown_State* st) {
     if (!cfg->options || cfg->option_count <= 0) return;
 
     // Clamp selection
-    if (st->selectedIndex < 0) st->selectedIndex = 0;
+    if (st->selectedIndex < -1) st->selectedIndex = -1;
     if (st->selectedIndex >= cfg->option_count) st->selectedIndex = cfg->option_count - 1;
 
     char buf[128];
@@ -99,9 +99,13 @@ void dropdown_build(const Dropdown_Config* cfg, Dropdown_State* st) {
             }
 
             // Selected option (stable string)
-            const char* sel = cfg->options[st->selectedIndex] ? cfg->options[st->selectedIndex] : "";
+            const char* display_text = "Select..."; // Default placeholder
+            if (st->selectedIndex >= 0) {
+                display_text = cfg->options[st->selectedIndex] ? cfg->options[st->selectedIndex] : "";
+            }
+
             CLAY_TEXT(
-                dd_cstr_(sel),
+                dd_cstr_(display_text),
                 CLAY_TEXT_CONFIG((Clay_TextElementConfig){
                     .fontSize = 16,
                     .textColor = (Clay_Color){ 245, 245, 245, 255 },
