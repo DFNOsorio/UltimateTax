@@ -66,28 +66,58 @@ Clay_RenderCommandArray app_ui_build(App_State* app, AppUi_Ids* out_ids) {
     return Clay_EndLayout();
 }
 
+
 void app_ui_handle_clicks(App_State* app, const AppUi_Ids* ids) {
     const bool pressed  = app->in.mouse_pressed;
     const bool released = app->in.mouse_released;
-    app->in.mouse_pressed = false;
-    app->in.mouse_released = false;
 
     if (pressed) {
+        // Start a new capture cycle
         app->has_active = false;
         app->active_id = app_null_id();
 
-        if (Clay_PointerOver(ids->id_nav_a)) { app->active_id = ids->id_nav_a; app->has_active = true; }
-        else if (Clay_PointerOver(ids->id_nav_b)) { app->active_id = ids->id_nav_b; app->has_active = true; }
-        else if (Clay_PointerOver(ids->id_toggle)) { app->active_id = ids->id_toggle; app->has_active = true; }
+        // Global widgets capture first
+        if (Clay_PointerOver(ids->id_nav_a)) {
+            app->active_id = ids->id_nav_a; app->has_active = true;
+        } else if (Clay_PointerOver(ids->id_nav_b)) {
+            app->active_id = ids->id_nav_b; app->has_active = true;
+        } else if (Clay_PointerOver(ids->id_toggle)) {
+            app->active_id = ids->id_toggle; app->has_active = true;
+        }
+
+        // Let current page capture/close dropdowns etc (only if not already captured)
+        if (app->page == APP_PAGE_A) page_a_handle_input(app);
+        else page_b_handle_input(app);
     }
 
     if (released) {
+        // Global release actions if a global widget owns capture
         if (app->has_active && Clay_PointerOver(app->active_id)) {
-            if (app_id_equal(app->active_id, ids->id_nav_a)) app->page = APP_PAGE_A;
-            else if (app_id_equal(app->active_id, ids->id_nav_b)) app->page = APP_PAGE_B;
-            else if (app_id_equal(app->active_id, ids->id_toggle)) app->nav_open = !app->nav_open;
+            if (app_id_equal(app->active_id, ids->id_nav_a)) {
+                app->page = APP_PAGE_A;
+            } else if (app_id_equal(app->active_id, ids->id_nav_b)) {
+                app->page = APP_PAGE_B;
+            } else if (app_id_equal(app->active_id, ids->id_toggle)) {
+                app->nav_open = !app->nav_open;
+            }
         }
-        app->has_active = false;
-        app->active_id = app_null_id();
+
+        // Let current page process release (dropdown selection commits here)
+        if (app->page == APP_PAGE_A) page_a_handle_input(app);
+        else page_b_handle_input(app);
+
+        // Only clear capture here if it's one of the global widgets.
+        // Page widgets (dropdown) clear capture themselves when they handle the release.
+        if (app->has_active &&
+            (app_id_equal(app->active_id, ids->id_nav_a) ||
+             app_id_equal(app->active_id, ids->id_nav_b) ||
+             app_id_equal(app->active_id, ids->id_toggle))) {
+            app->has_active = false;
+            app->active_id = app_null_id();
+        }
     }
+
+    // IMPORTANT: clear edge flags AFTER all UI consumed them
+    app->in.mouse_pressed = false;
+    app->in.mouse_released = false;
 }

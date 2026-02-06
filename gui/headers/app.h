@@ -72,8 +72,5 @@ static inline Clay_ElementId app_null_id(void) {
 }
 
 static inline bool app_id_equal(Clay_ElementId a, Clay_ElementId b) {
-    const uint8_t* pa = (const uint8_t*)&a;
-    const uint8_t* pb = (const uint8_t*)&b;
-    for (size_t i = 0; i < sizeof(Clay_ElementId); i++) if (pa[i] != pb[i]) return false;
-    return true;
+    return a.id == b.id;
 }

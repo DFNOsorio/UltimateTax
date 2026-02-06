@@ -10,3 +10,8 @@ void page_b_build(void) {
         })
     );
 }
+
+void page_b_handle_input(App_State* app) {
+    (void)app;
+    // No interactive widgets on Page B yet.
+}
