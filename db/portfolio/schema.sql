@@ -14,6 +14,10 @@ CREATE TABLE trades (
     -- Local datetime of the trade in ISO format: "YYYY-MM-DD HH:MM"
     trade_datetime      TEXT NOT NULL,
 
+    -- Trade year derived from trade_datetime (e.g., 2026)
+    trade_year          INTEGER
+                        GENERATED ALWAYS AS (CAST(substr(trade_datetime, 1, 4) AS INTEGER)) STORED,
+
     -- BUY or SELL
     type                TEXT NOT NULL CHECK (type IN ('BUY', 'SELL')) DEFAULT 'BUY',
 
@@ -36,21 +40,42 @@ CREATE TABLE trades (
     currency            TEXT NOT NULL DEFAULT 'USD',
 
     -- How many units of this currency correspond to 1 EUR
-    conversion_rate_eur REAL NOT NULL DEFAULT 1.0
+    conversion_rate_eur REAL NOT NULL DEFAULT 1.0,
+
+    -- Optional: enforce the expected format at least structurally.
+    -- This checks: "YYYY-MM-DD HH:MM" length and separators.
+    CHECK (
+        length(trade_datetime) = 16
+        AND substr(trade_datetime, 5, 1) = '-'
+        AND substr(trade_datetime, 8, 1) = '-'
+        AND substr(trade_datetime, 11, 1) = ' '
+        AND substr(trade_datetime, 14, 1) = ':'
+    )
 );
 
 -- Helpful indexes
 
 -- Order everything by time quickly
-CREATE INDEX idx_trades_datetime
-    ON trades(trade_datetime);
+CREATE INDEX IF NOT EXISTS idx_trades_datetime
+    ON trades(trade_datetime, id);
 
 -- Per-ticker queries in time order
-CREATE INDEX idx_trades_ticker_datetime
-    ON trades(ticker, trade_datetime);
+CREATE INDEX IF NOT EXISTS idx_trades_ticker_datetime
+    ON trades(ticker, trade_datetime, id);
 
+-- Per-broker + ticker queries in time order (covers your common filter/order pattern)
 CREATE INDEX IF NOT EXISTS idx_trades_broker_ticker_datetime
     ON trades(broker, ticker, trade_datetime, id);
+
+-- Fast year aggregates / filters
+CREATE INDEX IF NOT EXISTS idx_trades_year
+    ON trades(trade_year);
+
+CREATE INDEX IF NOT EXISTS idx_trades_year_broker
+    ON trades(trade_year, broker);
+
+CREATE INDEX IF NOT EXISTS idx_trades_year_broker_ticker
+    ON trades(trade_year, broker, ticker);
 
 -- Drop existing table if we are recreating the DB
 DROP TABLE IF EXISTS fifo_snapshot;
