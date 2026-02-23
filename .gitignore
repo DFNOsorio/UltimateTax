@@ -20,3 +20,4 @@ install
 ledger
 
 backup-before-rewrite.bundle
+compile_commands.json
