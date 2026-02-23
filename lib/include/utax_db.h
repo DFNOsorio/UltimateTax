@@ -35,7 +35,9 @@ typedef enum utax_rc {
     UTAX_OK = 0,
     UTAX_ERR_INVALID_ARG = 1,
     UTAX_ERR_NOMEM = 2,
-    UTAX_ERR_SQLITE = 3
+    UTAX_ERR_SQLITE = 3,
+    UTAX_ERR_NOT_FOUND = 4,
+    UTAX_ERR_NO_SPACE  = 5
 } utax_rc;
 
 typedef struct utax_db_open_opts {

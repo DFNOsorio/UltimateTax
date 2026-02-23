@@ -27,6 +27,14 @@ struct utax_db {
     char last_errmsg[512];
 };
 
+#if defined(_MSC_VER)
+  #define UTAX_STRCAT(dst, dstsz, src) (strcat_s((dst), (dstsz), (src)) == 0)
+#else
+  #define UTAX_STRCAT(dst, dstsz, src)                                   \
+    (strncat((dst), (src), ((dstsz) - strlen(dst) - 1)) != NULL)
+#endif
+
+
 utax_rc utax__set_err_sqlite(struct utax_db *h, int sqlite_rc);
 
 #endif /* ULTIMATETAX_UTAX_DB_PRIV_H */

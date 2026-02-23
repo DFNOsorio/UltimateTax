@@ -32,6 +32,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 add_library(ultimateTax STATIC
   lib/src/utax_db.c
   lib/src/utax_schema.c
+  lib/src/utax_trades.c
   vendor/sqlite/sqlite3.c
 )
 

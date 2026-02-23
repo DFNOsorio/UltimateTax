@@ -30,3 +30,11 @@ utax_add_test(utax_test_schema
 add_test(NAME utax_test_schema
   COMMAND $<TARGET_FILE:utax_test_schema> "${CMAKE_SOURCE_DIR}/db/portfolio/schema.sql"
 )
+
+utax_add_test(utax_test_trades
+  test_trades.c
+)
+
+add_test(NAME utax_test_trades
+  COMMAND $<TARGET_FILE:utax_test_trades> "${CMAKE_SOURCE_DIR}/db/portfolio/schema.sql"
+)
