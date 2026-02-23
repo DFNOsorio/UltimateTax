@@ -139,13 +139,24 @@ int main(int argc, char **argv) {
     long long ids[32] = {0};
     assert(N <= 32);
 
+    utax_dividends_row batch[32];
+    memset(batch, 0, sizeof(batch));
+
     for (size_t i = 0; i < N; ++i) {
-        long long id = 0;
-        rc = utax_dividends_insert(db, &UTAX_MOCK_DIVIDENDS[i], &id);
-        if (rc != UTAX_OK) fprintf(stderr, "insert failed: %s\n", utax_db_last_error(db));
-        assert(rc == UTAX_OK);
-        assert(id > 0);
-        ids[i] = id;
+        batch[i] = UTAX_MOCK_DIVIDENDS[i];
+    }
+
+    size_t inserted_n = 0;
+    rc = utax_dividends_insert_many(db, batch, N, &inserted_n);
+    if (rc != UTAX_OK) {
+        fprintf(stderr, "insert_many failed rc=%d err=%s\n", (int)rc, utax_db_last_error(db));
+    }
+    assert(rc == UTAX_OK);
+    assert(inserted_n == N);
+
+    for (size_t i = 0; i < N; ++i) {
+        assert(batch[i].dividend_id > 0);
+        ids[i] = batch[i].dividend_id;
     }
 
     rc = utax_dividends_count_total(db, &ctot);
@@ -317,6 +328,29 @@ int main(int argc, char **argv) {
 
         rc = utax_dividends_delete_by_id(db, ids[0]);
         assert(rc == UTAX_ERR_NOT_FOUND);
+    }
+
+    /* batch failure should rollback (violates CHECK: per_share > 0) */
+    {
+        utax_dividends_row bad[2];
+        memset(bad, 0, sizeof(bad));
+        bad[0] = UTAX_MOCK_DIVIDENDS[0];
+        bad[1] = UTAX_MOCK_DIVIDENDS[1];
+        bad[1].per_share = 0.0; /* invalid */
+
+        long long before = 0;
+        rc = utax_dividends_count_total(db, &before);
+        assert(rc == UTAX_OK);
+
+        size_t done = 0;
+        utax_rc rc2 = utax_dividends_insert_many(db, bad, 2, &done);
+        assert(rc2 != UTAX_OK);
+        assert(done == 1 || done == 0);
+
+        long long after = 0;
+        rc = utax_dividends_count_total(db, &after);
+        assert(rc == UTAX_OK);
+        assert(after == before); /* rollback => no rows added */
     }
 
     rc = utax_db_close(db);

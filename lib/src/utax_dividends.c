@@ -107,6 +107,82 @@ utax_rc utax_dividends_insert(utax_db_t *db, const utax_dividends_row *row, long
     return UTAX_OK;
 }
 
+utax_rc utax_dividends_insert_many(utax_db_t *db,
+                                   utax_dividends_row *rows,
+                                   size_t n,
+                                   size_t *out_inserted)
+{
+    if (!db || (!rows && n != 0)) return UTAX_ERR_INVALID_ARG;
+    if (out_inserted) *out_inserted = 0;
+    if (n == 0) return UTAX_OK;
+
+    struct utax_db *h = (struct utax_db *)db;
+
+    const char *sql =
+        "INSERT INTO dividends ("
+        " broker, ticker, country, dividend_dt, "
+        " per_share, total_amount, tax, "
+        " currency, conversion_rate_eur"
+        ") VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9);";
+
+    /* Begin transaction (DEFERRED) */
+    {
+        int rc0 = sqlite3_exec(h->db, "BEGIN;", NULL, NULL, NULL);
+        if (rc0 != SQLITE_OK) return utax__set_err_sqlite(h, rc0);
+    }
+
+    sqlite3_stmt *st = NULL;
+    utax_rc rc = utax__prep(h, &st, sql);
+    if (rc != UTAX_OK) {
+        (void)sqlite3_exec(h->db, "ROLLBACK;", NULL, NULL, NULL);
+        return rc;
+    }
+
+    size_t i = 0;
+    for (; i < n; ++i) {
+        utax_dividends_row *r = &rows[i];
+
+        sqlite3_clear_bindings(st);
+        sqlite3_reset(st);
+
+        (void)utax__bind_text(st, 1, r->broker);
+        (void)utax__bind_text(st, 2, r->ticker);
+        (void)utax__bind_text(st, 3, r->country);
+        (void)utax__bind_text(st, 4, r->dividend_dt);
+
+        sqlite3_bind_double(st, 5, r->per_share);
+        sqlite3_bind_double(st, 6, r->total_amount);
+        sqlite3_bind_double(st, 7, r->tax);
+
+        (void)utax__bind_text(st, 8, r->currency);
+        sqlite3_bind_double(st, 9, r->conversion_rate_eur);
+
+        int s = sqlite3_step(st);
+        if (s != SQLITE_DONE) {
+            sqlite3_finalize(st);
+            (void)sqlite3_exec(h->db, "ROLLBACK;", NULL, NULL, NULL);
+            if (out_inserted) *out_inserted = i;
+            return utax__set_err_sqlite(h, s);
+        }
+
+        r->dividend_id = (long long)sqlite3_last_insert_rowid(h->db);
+    }
+
+    sqlite3_finalize(st);
+
+    {
+        int rc1 = sqlite3_exec(h->db, "COMMIT;", NULL, NULL, NULL);
+        if (rc1 != SQLITE_OK) {
+            (void)sqlite3_exec(h->db, "ROLLBACK;", NULL, NULL, NULL);
+            if (out_inserted) *out_inserted = i;
+            return utax__set_err_sqlite(h, rc1);
+        }
+    }
+
+    if (out_inserted) *out_inserted = n;
+    return UTAX_OK;
+}
+
 utax_rc utax_dividends_update_by_id(utax_db_t *db, long long id, const utax_dividends_row *row) {
     if (!db || !row) return UTAX_ERR_INVALID_ARG;
     struct utax_db *h = (struct utax_db *)db;

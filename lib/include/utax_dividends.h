@@ -32,6 +32,10 @@ typedef struct utax_dividends_filter {
 
 /* CRUD */
 UTAX_API utax_rc utax_dividends_insert(utax_db_t *db, const utax_dividends_row *row, long long *out_id);
+UTAX_API utax_rc utax_dividends_insert_many(utax_db_t *db,
+                                            utax_dividends_row *rows,
+                                            size_t n,
+                                            size_t *out_inserted);
 UTAX_API utax_rc utax_dividends_update_by_id(utax_db_t *db, long long id, const utax_dividends_row *row);
 UTAX_API utax_rc utax_dividends_delete_by_id(utax_db_t *db, long long id);
 
