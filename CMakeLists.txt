@@ -34,6 +34,8 @@ add_library(ultimateTax STATIC
   lib/src/utax_schema.c
   lib/src/utax_trades.c
   lib/src/utax_dividends.c
+  lib/src/utax_fifo_snapshot.c
+  lib/src/utax_fifo_realized.c
   vendor/sqlite/sqlite3.c
 )
 

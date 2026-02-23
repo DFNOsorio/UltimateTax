@@ -6,11 +6,6 @@
 extern "C" {
 #endif
 
-typedef enum utax_year_mode {
-    UTAX_YEAR_EXACT = 0,
-    UTAX_YEAR_UP_TO = 1
-} utax_year_mode;
-
 typedef struct utax_dividends_filter {
     int has_year;
     int year;

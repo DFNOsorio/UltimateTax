@@ -40,6 +40,12 @@ typedef enum utax_rc {
     UTAX_ERR_NO_SPACE  = 5
 } utax_rc;
 
+typedef enum utax_year_mode {
+    UTAX_YEAR_EXACT = 0,
+    UTAX_YEAR_UP_TO = 1
+} utax_year_mode;
+
+
 typedef struct utax_db_open_opts {
     int create_if_missing;   /* default 1 */
     int read_only;           /* default 0 */

@@ -46,3 +46,19 @@ utax_add_test(utax_test_dividends
 add_test(NAME utax_test_dividends
   COMMAND $<TARGET_FILE:utax_test_dividends> "${CMAKE_SOURCE_DIR}/db/portfolio/schema.sql"
 )
+
+utax_add_test(utax_test_fifo_snapshot
+  test_fifo_snapshot.c
+)
+
+add_test(NAME utax_test_fifo_snapshot
+  COMMAND $<TARGET_FILE:utax_test_fifo_snapshot> "${CMAKE_SOURCE_DIR}/db/portfolio/schema.sql"
+)
+
+utax_add_test(utax_test_fifo_realized
+  test_fifo_realized.c
+)
+
+add_test(NAME utax_test_fifo_realized
+  COMMAND $<TARGET_FILE:utax_test_fifo_realized> "${CMAKE_SOURCE_DIR}/db/portfolio/schema.sql"
+)
