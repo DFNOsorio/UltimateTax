@@ -28,12 +28,38 @@ typedef struct utax_trades_filter {
     int offset;
 } utax_trades_filter;
 
+typedef struct utax_trades_node {
+    utax_trades_row row;
+    struct utax_trades_node *next;
+} utax_trades_node;
+
+UTAX_API utax_rc utax_trades_parse_csv_file(
+    const char *path,
+    utax_trades_node **inout_head,
+    size_t *inout_total_elems
+);
+
+UTAX_API void utax_trades_free_list(
+    utax_trades_node **inout_head,
+    size_t *inout_total_elems
+);
+
 /* CRUD */
 UTAX_API utax_rc utax_trades_insert(utax_db_t *db, const utax_trades_row *row, long long *out_id);
 UTAX_API utax_rc utax_trades_insert_many(utax_db_t *db,
                                          utax_trades_row *rows,
                                          size_t n,
                                          size_t *out_inserted);
+UTAX_API utax_rc utax_trades_insert_many_list(
+    utax_db_t *db,
+    utax_trades_node *head,
+    size_t *out_inserted
+);
+UTAX_API utax_rc utax_trades_insert_many_from_csv_file(
+    utax_db_t *db,
+    const char *path,
+    size_t *out_inserted
+);
 UTAX_API utax_rc utax_trades_update_by_id(utax_db_t *db, long long id, const utax_trades_row *row);
 UTAX_API utax_rc utax_trades_delete_by_id(utax_db_t *db, long long id);
 
