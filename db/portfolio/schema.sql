@@ -6,37 +6,28 @@
 CREATE TABLE IF NOT EXISTS trades (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
 
+    -- High-selectivity / common filters
     broker              TEXT NOT NULL DEFAULT 'IKBR',
+    ticker              TEXT NOT NULL,
 
-    -- Local datetime of the trade in ISO format: "YYYY-MM-DD HH:MM"
+    -- Sort key (ISO local datetime)
     trade_datetime      TEXT NOT NULL,
 
-    -- Trade year derived from trade_datetime (e.g., 2026)
+    -- Derived year for fast grouping/filtering
     trade_year          INTEGER
                         GENERATED ALWAYS AS (CAST(substr(trade_datetime, 1, 4) AS INTEGER)) STORED,
 
     -- BUY or SELL
     type                TEXT NOT NULL CHECK (type IN ('BUY', 'SELL')) DEFAULT 'BUY',
 
-    -- Stock ticker symbol, e.g. "OSTK", "GE"
-    ticker              TEXT NOT NULL,
-
-    -- Number of shares
+    -- Core numeric payload
     quantity            REAL NOT NULL CHECK (quantity > 0.0),
-
-    -- Price per share in trade currency
     price_per_share     REAL NOT NULL CHECK (price_per_share >= 0.0),
-
-    -- Commission in trade currency
     commission          REAL NOT NULL DEFAULT 0.0 CHECK (commission >= 0.0),
 
-    -- Country of the market (e.g. "US")
+    -- Market metadata
     country             TEXT NOT NULL DEFAULT 'US',
-
-    -- Trade currency (e.g. "USD")
     currency            TEXT NOT NULL DEFAULT 'USD',
-
-    -- How many units of this currency correspond to 1 EUR
     conversion_rate_eur REAL NOT NULL DEFAULT 1.0 CHECK (conversion_rate_eur > 0.0),
 
     -- Structural format check: "YYYY-MM-DD HH:MM"
@@ -81,19 +72,21 @@ CREATE INDEX IF NOT EXISTS idx_trades_year_broker_ticker
 CREATE TABLE IF NOT EXISTS fifo_snapshot (
     lot_id              INTEGER PRIMARY KEY AUTOINCREMENT,
 
+    -- Common filters
     broker              TEXT NOT NULL,
-    tax_year            INTEGER NOT NULL,          -- snapshot as-of end of this year
+    tax_year            INTEGER NOT NULL,
     ticker              TEXT NOT NULL,
 
+    -- Acquisition linkage
     acq_trade_id        INTEGER NOT NULL,
     acq_datetime        TEXT NOT NULL,
 
+    -- Core numeric payload
     qty_remaining       REAL NOT NULL CHECK (qty_remaining >= 0.0),
-
     cost_per_share_eur  REAL NOT NULL CHECK (cost_per_share_eur >= 0.0),
-
     acq_commission_eur  REAL NOT NULL DEFAULT 0.0 CHECK (acq_commission_eur >= 0.0),
 
+    -- Metadata
     country             TEXT NOT NULL,
 
     FOREIGN KEY (acq_trade_id) REFERENCES trades(id)
@@ -111,36 +104,39 @@ ON fifo_snapshot(acq_trade_id);
 -- ─────────────────────────────────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS fifo_realized (
-  realized_id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    realized_id        INTEGER PRIMARY KEY AUTOINCREMENT,
 
-  broker             TEXT NOT NULL,
-  tax_year           INTEGER NOT NULL,
-  ticker             TEXT NOT NULL,
-  country            TEXT NOT NULL,
+    -- Common filters
+    broker             TEXT NOT NULL,
+    tax_year           INTEGER NOT NULL,
+    ticker             TEXT NOT NULL,
+    country            TEXT NOT NULL,
 
-  sell_trade_id      INTEGER NOT NULL,
-  buy_trade_id       INTEGER NOT NULL,
-  match_seq          INTEGER NOT NULL,
+    -- Matching identifiers
+    sell_trade_id      INTEGER NOT NULL,
+    buy_trade_id       INTEGER NOT NULL,
+    match_seq          INTEGER NOT NULL,
 
-  sell_datetime      TEXT NOT NULL,
-  buy_datetime       TEXT NOT NULL,
+    -- Timestamps (used for sorting/reporting)
+    sell_datetime      TEXT NOT NULL,
+    buy_datetime       TEXT NOT NULL,
 
-  qty_matched        REAL NOT NULL CHECK (qty_matched > 0.0),
+    -- Core numeric payload
+    qty_matched            REAL NOT NULL CHECK (qty_matched > 0.0),
+    acquisition_value_eur  REAL NOT NULL CHECK (acquisition_value_eur >= 0.0),
+    sale_value_eur         REAL NOT NULL CHECK (sale_value_eur >= 0.0),
+    costs_eur              REAL NOT NULL DEFAULT 0.0 CHECK (costs_eur >= 0.0),
 
-  acquisition_value_eur  REAL NOT NULL CHECK (acquisition_value_eur >= 0.0),
-  sale_value_eur         REAL NOT NULL CHECK (sale_value_eur >= 0.0),
-  costs_eur              REAL NOT NULL DEFAULT 0.0 CHECK (costs_eur >= 0.0),
-
-  gain_eur           REAL GENERATED ALWAYS AS (
+    gain_eur           REAL GENERATED ALWAYS AS (
                       COALESCE(sale_value_eur, 0.0)
                     - COALESCE(acquisition_value_eur, 0.0)
                     - COALESCE(costs_eur, 0.0)
                   ) VIRTUAL,
 
-  FOREIGN KEY (sell_trade_id) REFERENCES trades(id),
-  FOREIGN KEY (buy_trade_id)  REFERENCES trades(id),
+    FOREIGN KEY (sell_trade_id) REFERENCES trades(id),
+    FOREIGN KEY (buy_trade_id)  REFERENCES trades(id),
 
-  UNIQUE (sell_trade_id, match_seq)
+    UNIQUE (sell_trade_id, match_seq)
 );
 
 CREATE INDEX IF NOT EXISTS idx_fifo_realized_broker_year
@@ -160,11 +156,15 @@ ON fifo_realized(sell_trade_id);
 CREATE TABLE IF NOT EXISTS dividends (
     dividend_id         INTEGER PRIMARY KEY AUTOINCREMENT,
 
+    -- Common filters
     broker              TEXT NOT NULL,
-    dividend_dt         TEXT NOT NULL,
     ticker              TEXT NOT NULL,
     country             TEXT NOT NULL,
 
+    -- Timestamp
+    dividend_dt         TEXT NOT NULL,
+
+    -- Core numeric payload
     per_share           REAL NOT NULL CHECK (per_share > 0.0),
     total_amount        REAL NOT NULL CHECK (total_amount >= 0.0),
     tax                 REAL NOT NULL CHECK (tax >= 0.0),
