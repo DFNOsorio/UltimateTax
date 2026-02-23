@@ -5,22 +5,6 @@
 #include <stdio.h>
 #include <string.h>
 
-static void utax__set_err_msg(struct utax_db *h, const char *msg) {
-    if (!h) return;
-    UTAX_STRNCPY(h->last_errmsg, sizeof(h->last_errmsg), msg ? msg : "");
-}
-
-static utax_rc utax__prep(struct utax_db *h, sqlite3_stmt **out_st, const char *sql) {
-    int rc = sqlite3_prepare_v2(h->db, sql, -1, out_st, NULL);
-    if (rc != SQLITE_OK) return utax__set_err_sqlite(h, rc);
-    return UTAX_OK;
-}
-
-static utax_rc utax__bind_text(sqlite3_stmt *st, int idx, const char *s) {
-    /* Bind empty strings as empty (SQL handles defaults via COALESCE/NULLIF where needed) */
-    return (sqlite3_bind_text(st, idx, s ? s : "", -1, SQLITE_TRANSIENT) == SQLITE_OK) ? UTAX_OK : UTAX_ERR_SQLITE;
-}
-
 static utax_rc utax__bind_filters(struct utax_db *h, sqlite3_stmt *st, const utax_trades_filter *f, int *io_idx) {
     int idx = *io_idx;
 

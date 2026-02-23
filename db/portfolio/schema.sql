@@ -163,6 +163,8 @@ CREATE TABLE IF NOT EXISTS dividends (
 
     -- Timestamp
     dividend_dt         TEXT NOT NULL,
+    dividend_year       INTEGER
+                        GENERATED ALWAYS AS (CAST(substr(dividend_dt, 1, 4) AS INTEGER)) STORED,
 
     -- Core numeric payload
     per_share           REAL NOT NULL CHECK (per_share > 0.0),
@@ -184,8 +186,8 @@ CREATE TABLE IF NOT EXISTS dividends (
     conversion_rate_eur REAL NOT NULL CHECK (conversion_rate_eur > 0.0)
 );
 
-CREATE INDEX IF NOT EXISTS idx_div_dt
-ON dividends(dividend_dt, dividend_id);
+CREATE INDEX IF NOT EXISTS idx_div_year
+ON dividends(dividend_year, dividend_dt, dividend_id);
 
-CREATE INDEX IF NOT EXISTS idx_div_country_dt
-ON dividends(country, dividend_dt, dividend_id);
+CREATE INDEX IF NOT EXISTS idx_div_broker_year
+ON dividends(broker, dividend_year, dividend_dt, dividend_id);

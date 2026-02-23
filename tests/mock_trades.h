@@ -13,7 +13,7 @@
       broker/type/country/currency can be "" to trigger DB-side defaults in your SQL.
 */
 
-static const utax_trades_row UTAX_MOCK_TRADES[] = {
+const utax_trades_row UTAX_MOCK_TRADES[] = {
     /* 2024 */
     {
         .id = 0,
@@ -88,6 +88,6 @@ static const utax_trades_row UTAX_MOCK_TRADES[] = {
     }
 };
 
-static inline size_t utax_mock_trades_count(void) {
+inline size_t utax_mock_trades_count(void) {
     return sizeof(UTAX_MOCK_TRADES) / sizeof(UTAX_MOCK_TRADES[0]);
 }

@@ -19,6 +19,12 @@
 },
 {
   "directory": "C:/dev/ultimateTax/build_output_clangd",
+  "command": "C:\\PROGRA~1\\MICROS~1\\18\\COMMUN~1\\VC\\Tools\\MSVC\\1450~1.357\\bin\\Hostx64\\x64\\cl.exe  /nologo -DCMAKE_INTDIR=\\\"Debug\\\" -IC:\\dev\\ultimateTax\\lib\\include -IC:\\dev\\ultimateTax\\vendor\\sqlite -IC:\\dev\\ultimateTax\\lib\\src /DWIN32 /D_WINDOWS /Zi /Ob0 /Od /RTC1 -std:c11 -MDd /W4 /permissive- /FoCMakeFiles\\ultimateTax.dir\\Debug\\lib\\src\\utax_dividends.c.obj /FdCMakeFiles\\ultimateTax.dir\\Debug\\ultimateTax.pdb /FS -c C:\\dev\\ultimateTax\\lib\\src\\utax_dividends.c",
+  "file": "C:/dev/ultimateTax/lib/src/utax_dividends.c",
+  "output": "C:/dev/ultimateTax/build_output_clangd/CMakeFiles/ultimateTax.dir/Debug/lib/src/utax_dividends.c.obj"
+},
+{
+  "directory": "C:/dev/ultimateTax/build_output_clangd",
   "command": "C:\\PROGRA~1\\MICROS~1\\18\\COMMUN~1\\VC\\Tools\\MSVC\\1450~1.357\\bin\\Hostx64\\x64\\cl.exe  /nologo -DCMAKE_INTDIR=\\\"Debug\\\" -IC:\\dev\\ultimateTax\\lib\\include -IC:\\dev\\ultimateTax\\vendor\\sqlite -IC:\\dev\\ultimateTax\\lib\\src /DWIN32 /D_WINDOWS /Zi /Ob0 /Od /RTC1 -std:c11 -MDd /W4 /permissive- /W0 /FoCMakeFiles\\ultimateTax.dir\\Debug\\vendor\\sqlite\\sqlite3.c.obj /FdCMakeFiles\\ultimateTax.dir\\Debug\\ultimateTax.pdb /FS -c C:\\dev\\ultimateTax\\vendor\\sqlite\\sqlite3.c",
   "file": "C:/dev/ultimateTax/vendor/sqlite/sqlite3.c",
   "output": "C:/dev/ultimateTax/build_output_clangd/CMakeFiles/ultimateTax.dir/Debug/vendor/sqlite/sqlite3.c.obj"
@@ -43,6 +49,12 @@
 },
 {
   "directory": "C:/dev/ultimateTax/build_output_clangd",
+  "command": "C:\\PROGRA~1\\MICROS~1\\18\\COMMUN~1\\VC\\Tools\\MSVC\\1450~1.357\\bin\\Hostx64\\x64\\cl.exe  /nologo -DCMAKE_INTDIR=\\\"Release\\\" -IC:\\dev\\ultimateTax\\lib\\include -IC:\\dev\\ultimateTax\\vendor\\sqlite -IC:\\dev\\ultimateTax\\lib\\src /DWIN32 /D_WINDOWS /O2 /Ob2 /DNDEBUG -std:c11 -MD /W4 /permissive- /FoCMakeFiles\\ultimateTax.dir\\Release\\lib\\src\\utax_dividends.c.obj /FdCMakeFiles\\ultimateTax.dir\\Release\\ultimateTax.pdb /FS -c C:\\dev\\ultimateTax\\lib\\src\\utax_dividends.c",
+  "file": "C:/dev/ultimateTax/lib/src/utax_dividends.c",
+  "output": "C:/dev/ultimateTax/build_output_clangd/CMakeFiles/ultimateTax.dir/Release/lib/src/utax_dividends.c.obj"
+},
+{
+  "directory": "C:/dev/ultimateTax/build_output_clangd",
   "command": "C:\\PROGRA~1\\MICROS~1\\18\\COMMUN~1\\VC\\Tools\\MSVC\\1450~1.357\\bin\\Hostx64\\x64\\cl.exe  /nologo -DCMAKE_INTDIR=\\\"Release\\\" -IC:\\dev\\ultimateTax\\lib\\include -IC:\\dev\\ultimateTax\\vendor\\sqlite -IC:\\dev\\ultimateTax\\lib\\src /DWIN32 /D_WINDOWS /O2 /Ob2 /DNDEBUG -std:c11 -MD /W4 /permissive- /W0 /FoCMakeFiles\\ultimateTax.dir\\Release\\vendor\\sqlite\\sqlite3.c.obj /FdCMakeFiles\\ultimateTax.dir\\Release\\ultimateTax.pdb /FS -c C:\\dev\\ultimateTax\\vendor\\sqlite\\sqlite3.c",
   "file": "C:/dev/ultimateTax/vendor/sqlite/sqlite3.c",
   "output": "C:/dev/ultimateTax/build_output_clangd/CMakeFiles/ultimateTax.dir/Release/vendor/sqlite/sqlite3.c.obj"
@@ -64,6 +76,12 @@
   "command": "C:\\PROGRA~1\\MICROS~1\\18\\COMMUN~1\\VC\\Tools\\MSVC\\1450~1.357\\bin\\Hostx64\\x64\\cl.exe  /nologo -DCMAKE_INTDIR=\\\"RelWithDebInfo\\\" -IC:\\dev\\ultimateTax\\lib\\include -IC:\\dev\\ultimateTax\\vendor\\sqlite -IC:\\dev\\ultimateTax\\lib\\src /DWIN32 /D_WINDOWS /Zi /O2 /Ob1 /DNDEBUG -std:c11 -MD /W4 /permissive- /FoCMakeFiles\\ultimateTax.dir\\RelWithDebInfo\\lib\\src\\utax_trades.c.obj /FdCMakeFiles\\ultimateTax.dir\\RelWithDebInfo\\ultimateTax.pdb /FS -c C:\\dev\\ultimateTax\\lib\\src\\utax_trades.c",
   "file": "C:/dev/ultimateTax/lib/src/utax_trades.c",
   "output": "C:/dev/ultimateTax/build_output_clangd/CMakeFiles/ultimateTax.dir/RelWithDebInfo/lib/src/utax_trades.c.obj"
+},
+{
+  "directory": "C:/dev/ultimateTax/build_output_clangd",
+  "command": "C:\\PROGRA~1\\MICROS~1\\18\\COMMUN~1\\VC\\Tools\\MSVC\\1450~1.357\\bin\\Hostx64\\x64\\cl.exe  /nologo -DCMAKE_INTDIR=\\\"RelWithDebInfo\\\" -IC:\\dev\\ultimateTax\\lib\\include -IC:\\dev\\ultimateTax\\vendor\\sqlite -IC:\\dev\\ultimateTax\\lib\\src /DWIN32 /D_WINDOWS /Zi /O2 /Ob1 /DNDEBUG -std:c11 -MD /W4 /permissive- /FoCMakeFiles\\ultimateTax.dir\\RelWithDebInfo\\lib\\src\\utax_dividends.c.obj /FdCMakeFiles\\ultimateTax.dir\\RelWithDebInfo\\ultimateTax.pdb /FS -c C:\\dev\\ultimateTax\\lib\\src\\utax_dividends.c",
+  "file": "C:/dev/ultimateTax/lib/src/utax_dividends.c",
+  "output": "C:/dev/ultimateTax/build_output_clangd/CMakeFiles/ultimateTax.dir/RelWithDebInfo/lib/src/utax_dividends.c.obj"
 },
 {
   "directory": "C:/dev/ultimateTax/build_output_clangd",

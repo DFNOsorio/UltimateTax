@@ -80,6 +80,10 @@ typedef struct utax_dividends_row {
     double tax;
     double conversion_rate_eur;
 
+    /* derived year (stored generated column in DB) */
+    int dividend_year;
+    int _pad0;
+
     char broker[UTAX_BROKER_MAX];
     char dividend_dt[UTAX_DT_MAX];
     char ticker[UTAX_TICKER_MAX];
