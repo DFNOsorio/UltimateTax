@@ -13,3 +13,8 @@ test_real_values
 gui/build
 
 .vs
+.cache
+build_output_clangd
+install
+ledger/
+backup-before-rewrite.bundle
