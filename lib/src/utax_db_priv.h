@@ -3,8 +3,24 @@
 
 #include "utax_db.h"
 #include <sqlite3.h>
+#include <string.h>
 
 
+#if defined(_MSC_VER)
+  #define UTAX_STRNCPY(dst, dstsz, src) strncpy_s((dst), (dstsz), (src), _TRUNCATE)
+#else
+  #define UTAX_STRNCPY(dst, dstsz, src)             \
+    do {                                            \
+      strncpy((dst), (src), (dstsz) - 1);           \
+      (dst)[(dstsz) - 1] = '\0';                    \
+    } while (0)
+#endif
+
+#if defined(_MSC_VER)
+  #define UTAX_FOPEN(out_fp, path, mode) (fopen_s(&(out_fp), (path), (mode)) == 0)
+#else
+  #define UTAX_FOPEN(out_fp, path, mode) (((out_fp) = fopen((path), (mode))) != NULL)
+#endif
 
 struct utax_db {
     sqlite3 *db;

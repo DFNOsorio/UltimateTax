@@ -52,6 +52,7 @@ static void test_open_creates_file(void) {
     utax_db_open_opts opts = utax_db_open_opts_default();
     opts.create_if_missing = 1;
     opts.read_only = 0;
+    opts.busy_timeout_ms = 50;
 
     utax_rc rc = utax_db_open(path, &opts, &db);
     assert(rc == UTAX_OK);
@@ -78,6 +79,7 @@ static void test_open_readonly_missing_fails(void) {
     utax_db_open_opts opts = utax_db_open_opts_default();
     opts.create_if_missing = 0;
     opts.read_only = 1;
+    opts.busy_timeout_ms = 50;
 
     utax_rc rc = utax_db_open(path, &opts, &db);
     assert(rc != UTAX_OK);

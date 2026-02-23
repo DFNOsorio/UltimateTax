@@ -1,12 +1,9 @@
 -- db/schema.sql
--- Simple schema for Revolut stock trades
+-- ─────────────────────────────────────────────────────────────────────────────
+-- trades
+-- ─────────────────────────────────────────────────────────────────────────────
 
-PRAGMA foreign_keys = ON;
-
--- Drop existing table if we are recreating the DB
-DROP TABLE IF EXISTS trades;
-
-CREATE TABLE trades (
+CREATE TABLE IF NOT EXISTS trades (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
 
     broker              TEXT NOT NULL DEFAULT 'IKBR',
@@ -25,13 +22,13 @@ CREATE TABLE trades (
     ticker              TEXT NOT NULL,
 
     -- Number of shares
-    quantity            REAL NOT NULL,
+    quantity            REAL NOT NULL CHECK (quantity > 0.0),
 
     -- Price per share in trade currency
-    price_per_share     REAL NOT NULL,
+    price_per_share     REAL NOT NULL CHECK (price_per_share >= 0.0),
 
     -- Commission in trade currency
-    commission          REAL NOT NULL DEFAULT 0.0,
+    commission          REAL NOT NULL DEFAULT 0.0 CHECK (commission >= 0.0),
 
     -- Country of the market (e.g. "US")
     country             TEXT NOT NULL DEFAULT 'US',
@@ -40,10 +37,9 @@ CREATE TABLE trades (
     currency            TEXT NOT NULL DEFAULT 'USD',
 
     -- How many units of this currency correspond to 1 EUR
-    conversion_rate_eur REAL NOT NULL DEFAULT 1.0,
+    conversion_rate_eur REAL NOT NULL DEFAULT 1.0 CHECK (conversion_rate_eur > 0.0),
 
-    -- Optional: enforce the expected format at least structurally.
-    -- This checks: "YYYY-MM-DD HH:MM" length and separators.
+    -- Structural format check: "YYYY-MM-DD HH:MM"
     CHECK (
         length(trade_datetime) = 16
         AND substr(trade_datetime, 5, 1) = '-'
@@ -63,7 +59,7 @@ CREATE INDEX IF NOT EXISTS idx_trades_datetime
 CREATE INDEX IF NOT EXISTS idx_trades_ticker_datetime
     ON trades(ticker, trade_datetime, id);
 
--- Per-broker + ticker queries in time order (covers your common filter/order pattern)
+-- Per-broker + ticker queries in time order
 CREATE INDEX IF NOT EXISTS idx_trades_broker_ticker_datetime
     ON trades(broker, ticker, trade_datetime, id);
 
@@ -77,10 +73,12 @@ CREATE INDEX IF NOT EXISTS idx_trades_year_broker
 CREATE INDEX IF NOT EXISTS idx_trades_year_broker_ticker
     ON trades(trade_year, broker, ticker);
 
--- Drop existing table if we are recreating the DB
-DROP TABLE IF EXISTS fifo_snapshot;
 
-CREATE TABLE fifo_snapshot (
+-- ─────────────────────────────────────────────────────────────────────────────
+-- fifo_snapshot
+-- ─────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS fifo_snapshot (
     lot_id              INTEGER PRIMARY KEY AUTOINCREMENT,
 
     broker              TEXT NOT NULL,
@@ -108,8 +106,9 @@ CREATE INDEX IF NOT EXISTS idx_fifo_snapshot_acq_trade
 ON fifo_snapshot(acq_trade_id);
 
 
-
-DROP TABLE IF EXISTS fifo_realized;
+-- ─────────────────────────────────────────────────────────────────────────────
+-- fifo_realized
+-- ─────────────────────────────────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS fifo_realized (
   realized_id        INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -126,11 +125,11 @@ CREATE TABLE IF NOT EXISTS fifo_realized (
   sell_datetime      TEXT NOT NULL,
   buy_datetime       TEXT NOT NULL,
 
-  qty_matched        REAL NOT NULL,
+  qty_matched        REAL NOT NULL CHECK (qty_matched > 0.0),
 
-  acquisition_value_eur  REAL NOT NULL,
-  sale_value_eur         REAL NOT NULL,
-  costs_eur              REAL NOT NULL DEFAULT 0.0,
+  acquisition_value_eur  REAL NOT NULL CHECK (acquisition_value_eur >= 0.0),
+  sale_value_eur         REAL NOT NULL CHECK (sale_value_eur >= 0.0),
+  costs_eur              REAL NOT NULL DEFAULT 0.0 CHECK (costs_eur >= 0.0),
 
   gain_eur           REAL GENERATED ALWAYS AS (
                       COALESCE(sale_value_eur, 0.0)
@@ -144,7 +143,6 @@ CREATE TABLE IF NOT EXISTS fifo_realized (
   UNIQUE (sell_trade_id, match_seq)
 );
 
-
 CREATE INDEX IF NOT EXISTS idx_fifo_realized_broker_year
 ON fifo_realized(broker, tax_year);
 
@@ -155,7 +153,9 @@ CREATE INDEX IF NOT EXISTS idx_fifo_realized_sell_trade
 ON fifo_realized(sell_trade_id);
 
 
-DROP TABLE IF EXISTS dividends;
+-- ─────────────────────────────────────────────────────────────────────────────
+-- dividends
+-- ─────────────────────────────────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS dividends (
     dividend_id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -165,9 +165,9 @@ CREATE TABLE IF NOT EXISTS dividends (
     ticker              TEXT NOT NULL,
     country             TEXT NOT NULL,
 
-    per_share           REAL NOT NULL,
-    total_amount        REAL NOT NULL,
-    tax                 REAL NOT NULL,
+    per_share           REAL NOT NULL CHECK (per_share > 0.0),
+    total_amount        REAL NOT NULL CHECK (total_amount >= 0.0),
+    tax                 REAL NOT NULL CHECK (tax >= 0.0),
 
     number_of_shares    REAL GENERATED ALWAYS AS (
                         COALESCE(total_amount, 0.0) /
@@ -181,7 +181,7 @@ CREATE TABLE IF NOT EXISTS dividends (
                         ) VIRTUAL,
 
     currency            TEXT NOT NULL,
-    conversion_rate_eur REAL NOT NULL
+    conversion_rate_eur REAL NOT NULL CHECK (conversion_rate_eur > 0.0)
 );
 
 CREATE INDEX IF NOT EXISTS idx_div_dt

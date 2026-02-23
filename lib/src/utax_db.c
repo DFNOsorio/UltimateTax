@@ -1,17 +1,7 @@
 #include "utax_db_priv.h"
 
 #include <stdlib.h>
-#include <string.h>
 
-#if defined(_MSC_VER)
-  #define UTAX_STRNCPY(dst, dstsz, src) strncpy_s((dst), (dstsz), (src), _TRUNCATE)
-#else
-  #define UTAX_STRNCPY(dst, dstsz, src)             \
-    do {                                            \
-      strncpy((dst), (src), (dstsz) - 1);           \
-      (dst)[(dstsz) - 1] = '\0';                    \
-    } while (0)
-#endif
 
 static void utax__clear_err(struct utax_db *h) {
     if (!h) return;
@@ -68,6 +58,20 @@ utax_rc utax_db_open(const char *path,
 
     if (o.busy_timeout_ms > 0) {
         sqlite3_busy_timeout(h->db, o.busy_timeout_ms);
+    }
+
+    char *errmsg = NULL;
+    int prc = sqlite3_exec(h->db, "PRAGMA foreign_keys=ON;", NULL, NULL, &errmsg);
+    if (prc != SQLITE_OK) {
+        if (errmsg) {
+            UTAX_STRNCPY(h->last_errmsg, sizeof(h->last_errmsg), errmsg);
+            sqlite3_free(errmsg);
+        } else {
+            utax__set_err_sqlite(h, prc);
+        }
+        sqlite3_close_v2(h->db);
+        free(h);
+        return UTAX_ERR_SQLITE;
     }
 
     *out_db = (utax_db_t *)h;
