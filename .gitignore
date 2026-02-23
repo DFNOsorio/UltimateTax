@@ -16,3 +16,4 @@ gui/build
 .cache
 build_output_clangd
 __cmake_systeminformation
+install

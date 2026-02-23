@@ -100,6 +100,96 @@ utax_rc utax_trades_insert(utax_db_t *db, const utax_trades_row *row, long long 
     return UTAX_OK;
 }
 
+utax_rc utax_trades_insert_many(utax_db_t *db,
+                                utax_trades_row *rows,
+                                size_t n,
+                                size_t *out_inserted)
+{
+    if (!db || (!rows && n != 0)) return UTAX_ERR_INVALID_ARG;
+    if (out_inserted) *out_inserted = 0;
+    if (n == 0) return UTAX_OK;
+
+    struct utax_db *h = (struct utax_db *)db;
+
+    const char *sql =
+        "INSERT INTO trades ("
+        " broker, ticker, trade_datetime, type, "
+        " quantity, price_per_share, commission, "
+        " country, currency, conversion_rate_eur"
+        ") VALUES ("
+        " COALESCE(NULLIF(?1,''),'IKBR'),"
+        " ?2,"
+        " ?3,"
+        " COALESCE(NULLIF(?4,''),'BUY'),"
+        " ?5, ?6, ?7,"
+        " COALESCE(NULLIF(?8,''),'US'),"
+        " COALESCE(NULLIF(?9,''),'USD'),"
+        " ?10"
+        ");";
+
+    /* Begin transaction (DEFERRED) */
+    {
+        int rc0 = sqlite3_exec(h->db, "BEGIN;", NULL, NULL, NULL);
+        if (rc0 != SQLITE_OK) return utax__set_err_sqlite(h, rc0);
+    }
+
+    sqlite3_stmt *st = NULL;
+    utax_rc rc = utax__prep(h, &st, sql);
+    if (rc != UTAX_OK) {
+        (void)sqlite3_exec(h->db, "ROLLBACK;", NULL, NULL, NULL);
+        return rc;
+    }
+
+    size_t i = 0;
+    for (; i < n; ++i) {
+        utax_trades_row *r = &rows[i];
+
+        sqlite3_clear_bindings(st);
+        sqlite3_reset(st);
+
+        /* numeric defaults consistent with single insert */
+        double commission = (r->commission >= 0.0) ? r->commission : 0.0;
+        double conv = (r->conversion_rate_eur > 0.0) ? r->conversion_rate_eur : 1.0;
+
+        (void)utax__bind_text(st, 1, r->broker);
+        (void)utax__bind_text(st, 2, r->ticker);
+        (void)utax__bind_text(st, 3, r->trade_datetime);
+        (void)utax__bind_text(st, 4, r->type);
+
+        sqlite3_bind_double(st, 5, r->quantity);
+        sqlite3_bind_double(st, 6, r->price_per_share);
+        sqlite3_bind_double(st, 7, commission);
+
+        (void)utax__bind_text(st, 8, r->country);
+        (void)utax__bind_text(st, 9, r->currency);
+        sqlite3_bind_double(st, 10, conv);
+
+        int s = sqlite3_step(st);
+        if (s != SQLITE_DONE) {
+            sqlite3_finalize(st);
+            (void)sqlite3_exec(h->db, "ROLLBACK;", NULL, NULL, NULL);
+            if (out_inserted) *out_inserted = i;
+            return utax__set_err_sqlite(h, s);
+        }
+
+        r->id = (long long)sqlite3_last_insert_rowid(h->db);
+    }
+
+    sqlite3_finalize(st);
+
+    {
+        int rc1 = sqlite3_exec(h->db, "COMMIT;", NULL, NULL, NULL);
+        if (rc1 != SQLITE_OK) {
+            (void)sqlite3_exec(h->db, "ROLLBACK;", NULL, NULL, NULL);
+            if (out_inserted) *out_inserted = i;
+            return utax__set_err_sqlite(h, rc1);
+        }
+    }
+
+    if (out_inserted) *out_inserted = n;
+    return UTAX_OK;
+}
+
 utax_rc utax_trades_update_by_id(utax_db_t *db, long long id, const utax_trades_row *row) {
     if (!db || !row) return UTAX_ERR_INVALID_ARG;
 

@@ -30,6 +30,10 @@ typedef struct utax_trades_filter {
 
 /* CRUD */
 UTAX_API utax_rc utax_trades_insert(utax_db_t *db, const utax_trades_row *row, long long *out_id);
+UTAX_API utax_rc utax_trades_insert_many(utax_db_t *db,
+                                         utax_trades_row *rows,
+                                         size_t n,
+                                         size_t *out_inserted);
 UTAX_API utax_rc utax_trades_update_by_id(utax_db_t *db, long long id, const utax_trades_row *row);
 UTAX_API utax_rc utax_trades_delete_by_id(utax_db_t *db, long long id);
 
