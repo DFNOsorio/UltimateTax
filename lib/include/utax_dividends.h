@@ -30,12 +30,35 @@ typedef struct utax_dividends_filter {
     int offset;
 } utax_dividends_filter;
 
+typedef struct utax_dividends_node {
+    utax_dividends_row row;
+    struct utax_dividends_node *next;
+} utax_dividends_node;
+
+UTAX_API utax_rc utax_dividends_parse_csv_file(
+    const char *path,
+    utax_dividends_node **inout_head,
+    size_t *inout_total_elems
+);
+
+UTAX_API void utax_dividends_free_list(utax_dividends_node **inout_head, size_t *inout_total_elems);
+
 /* CRUD */
 UTAX_API utax_rc utax_dividends_insert(utax_db_t *db, const utax_dividends_row *row, long long *out_id);
 UTAX_API utax_rc utax_dividends_insert_many(utax_db_t *db,
                                             utax_dividends_row *rows,
                                             size_t n,
                                             size_t *out_inserted);
+UTAX_API utax_rc utax_dividends_insert_many_list(
+    utax_db_t *db,
+    utax_dividends_node *head,
+    size_t *out_inserted
+);
+UTAX_API utax_rc utax_dividends_insert_many_from_csv_file(
+    utax_db_t *db,
+    const char *path,
+    size_t *out_inserted
+);
 UTAX_API utax_rc utax_dividends_update_by_id(utax_db_t *db, long long id, const utax_dividends_row *row);
 UTAX_API utax_rc utax_dividends_delete_by_id(utax_db_t *db, long long id);
 
@@ -54,6 +77,8 @@ UTAX_API utax_rc utax_dividends_get_filtered(utax_db_t *db,
                                              size_t out_cap,
                                              size_t *out_count,
                                              size_t *out_required);
+
+
 
 #ifdef __cplusplus
 }

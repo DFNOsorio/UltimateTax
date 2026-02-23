@@ -33,11 +33,27 @@ typedef struct utax_db utax_db_t;
 /* Return codes */
 typedef enum utax_rc {
     UTAX_OK = 0,
+
+    /* argument / memory / generic */
     UTAX_ERR_INVALID_ARG = 1,
-    UTAX_ERR_NOMEM = 2,
-    UTAX_ERR_SQLITE = 3,
-    UTAX_ERR_NOT_FOUND = 4,
-    UTAX_ERR_NO_SPACE  = 5
+    UTAX_ERR_NOMEM       = 2,
+    UTAX_ERR_NO_SPACE    = 5,
+
+    /* sqlite */
+    UTAX_ERR_SQLITE      = 3,
+    UTAX_ERR_NOT_FOUND   = 4,
+
+    /* I/O */
+    UTAX_ERR_IO_OPEN     = 10,
+    UTAX_ERR_IO_READ     = 11,
+
+    /* parsing / format */
+    UTAX_ERR_BAD_HEADER  = 20,
+    UTAX_ERR_PARSE       = 21,   /* generic parse failure */
+    UTAX_ERR_BAD_FIELD   = 22,   /* numeric/date field invalid */
+    UTAX_ERR_TRUNCATED   = 23,   /* string field truncated to fit buffer */
+    UTAX_ERR_OVERFLOW    = 24,   /* numeric overflow/underflow */
+    UTAX_ERR_UNSUPPORTED = 25    /* unsupported delimiter/format */
 } utax_rc;
 
 typedef enum utax_year_mode {

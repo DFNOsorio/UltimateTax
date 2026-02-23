@@ -8,7 +8,7 @@ typedef struct utax_fifo_snapshot_mock {
     char acq_trade_datetime_key[UTAX_DT_MAX]; /* used to map to inserted trades.id in the test */
 } utax_fifo_snapshot_mock;
 
-static const utax_fifo_snapshot_mock UTAX_MOCK_FIFO_SNAPSHOTS[] = {
+const utax_fifo_snapshot_mock UTAX_MOCK_FIFO_SNAPSHOTS[] = {
     {
         .row = {
             .lot_id = 0,
@@ -56,6 +56,6 @@ static const utax_fifo_snapshot_mock UTAX_MOCK_FIFO_SNAPSHOTS[] = {
     }
 };
 
-static inline size_t utax_mock_fifo_snapshots_count(void) {
+inline size_t utax_mock_fifo_snapshots_count(void) {
     return sizeof(UTAX_MOCK_FIFO_SNAPSHOTS) / sizeof(UTAX_MOCK_FIFO_SNAPSHOTS[0]);
 }

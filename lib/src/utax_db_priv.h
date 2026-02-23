@@ -36,6 +36,12 @@ struct utax_db {
     (strncat((dst), (src), ((dstsz) - strlen(dst) - 1)) != NULL)
 #endif
 
+#if defined(_MSC_VER)
+  #define UTAX_SSCANF sscanf_s
+#else
+  #define UTAX_SSCANF sscanf
+#endif
+
 
 utax_rc utax__set_err_sqlite(struct utax_db *h, int sqlite_rc);
 

@@ -9,7 +9,7 @@ typedef struct utax_fifo_realized_mock {
     char buy_trade_datetime_key[UTAX_DT_MAX];
 } utax_fifo_realized_mock;
 
-static const utax_fifo_realized_mock UTAX_MOCK_FIFO_REALIZED[] = {
+const utax_fifo_realized_mock UTAX_MOCK_FIFO_REALIZED[] = {
     {
         .row = {
             .realized_id = 0,
@@ -72,6 +72,6 @@ static const utax_fifo_realized_mock UTAX_MOCK_FIFO_REALIZED[] = {
     }
 };
 
-static inline size_t utax_mock_fifo_realized_count(void) {
+inline size_t utax_mock_fifo_realized_count(void) {
     return sizeof(UTAX_MOCK_FIFO_REALIZED) / sizeof(UTAX_MOCK_FIFO_REALIZED[0]);
 }
