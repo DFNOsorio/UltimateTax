@@ -10,12 +10,13 @@ extern "C" {
    Fixed-size string field limits (including null terminator space)
    -------------------------------------------------------------------------- */
 enum {
-    UTAX_BROKER_MAX     = 16,  /* "IKBR", "REVOLUT", etc. */
-    UTAX_DT_MAX         = 17,  /* "YYYY-MM-DD HH:MM" + '\0' */
-    UTAX_TYPE_MAX       = 5,   /* "BUY"/"SELL" + '\0' */
-    UTAX_TICKER_MAX     = 16,  /* e.g., "BRK.B", "RDSA.AS", etc. */
-    UTAX_COUNTRY_MAX    = 4,   /* "US" + '\0' (room for padding) */
-    UTAX_CCY_MAX        = 4    /* "USD" + '\0' */
+    UTAX_BROKER_MAX         = 16,  /* "IKBR", "REVOLUT", etc. */
+    UTAX_DT_MAX             = 17,  /* "YYYY-MM-DD HH:MM" + '\0' */
+    UTAX_TYPE_MAX           = 5,   /* "BUY"/"SELL" + '\0' */
+    UTAX_TICKER_MAX         = 16,  /* e.g., "BRK.B", "RDSA.AS", etc. */
+    UTAX_COUNTRY_MAX        = 4,   /* "US" + '\0' (room for padding) */
+    UTAX_CCY_MAX            = 4,   /* "USD" + '\0' */
+    UTAX_ACTION_TYPE_MAX    = 16   /* longest is "CONVERSION" (10) + '\0' */
 };
 
 typedef struct utax_trades_row {
@@ -90,6 +91,24 @@ typedef struct utax_dividends_row {
     char country[UTAX_COUNTRY_MAX];
     char currency[UTAX_CCY_MAX];
 } utax_dividends_row;
+
+typedef struct utax_corporate_actions_row {
+    long long action_id;
+
+    double from_qty;
+    double to_qty;
+    double ratio;          /* generated in DB, but convenient to return */
+
+    int action_year;
+    int _pad0;
+
+    char broker[UTAX_BROKER_MAX];
+    char action_date[UTAX_DT_MAX];                 /* "YYYY-MM-DD" */
+    char action_type[UTAX_ACTION_TYPE_MAX];          /* MERGER/CONVERSION/SPINOFF/SPLIT */
+
+    char from_ticker[UTAX_TICKER_MAX];
+    char to_ticker[UTAX_TICKER_MAX];                 /* "" when NULL in DB (SPLIT) */
+} utax_corporate_actions_row;
 
 utax_rc utax_schema_apply_from_file(utax_db_t *db, const char *schema_sql_path);
 

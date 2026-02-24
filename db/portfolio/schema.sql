@@ -191,3 +191,55 @@ ON dividends(dividend_year, dividend_dt, dividend_id);
 
 CREATE INDEX IF NOT EXISTS idx_div_broker_year
 ON dividends(broker, dividend_year, dividend_dt, dividend_id);
+
+CREATE TABLE IF NOT EXISTS corporate_actions (
+    action_id     INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    broker        TEXT NOT NULL,
+
+    -- ISO date: "YYYY-MM-DD"
+    action_date   TEXT NOT NULL,
+
+    action_year   INTEGER
+                 GENERATED ALWAYS AS (CAST(substr(action_date, 1, 4) AS INTEGER)) STORED,
+
+    action_type   TEXT NOT NULL
+                 CHECK (action_type IN ('MERGER','CONVERSION','SPINOFF','SPLIT')),
+
+    from_ticker   TEXT NOT NULL,
+    to_ticker     TEXT,  -- NULL when SPLIT
+
+    from_qty      REAL NOT NULL CHECK (from_qty > 0.0),
+    to_qty        REAL NOT NULL CHECK (to_qty > 0.0),
+
+    -- ratio = to_qty / from_qty
+    ratio         REAL
+                 GENERATED ALWAYS AS (to_qty / from_qty) STORED,
+
+    -- structural checks
+    CHECK (
+        length(action_date) = 10
+        AND substr(action_date, 5, 1) = '-'
+        AND substr(action_date, 8, 1) = '-'
+    ),
+
+    -- enforce to_ticker NULL only for SPLIT
+    CHECK (
+        (action_type = 'SPLIT' AND to_ticker IS NULL)
+        OR
+        (action_type <> 'SPLIT' AND to_ticker IS NOT NULL)
+    )
+);
+
+-- Useful indexes
+CREATE INDEX IF NOT EXISTS idx_ca_broker_date
+ON corporate_actions(broker, action_date, action_id);
+
+CREATE INDEX IF NOT EXISTS idx_ca_broker_year_type
+ON corporate_actions(broker, action_year, action_type, action_date, action_id);
+
+CREATE INDEX IF NOT EXISTS idx_ca_from_ticker_date
+ON corporate_actions(from_ticker, action_date, action_id);
+
+CREATE INDEX IF NOT EXISTS idx_ca_to_ticker_date
+ON corporate_actions(to_ticker, action_date, action_id);

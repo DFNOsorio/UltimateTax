@@ -78,3 +78,19 @@ utax_add_test(utax_test_fifo_realized
 add_test(NAME utax_test_fifo_realized
   COMMAND $<TARGET_FILE:utax_test_fifo_realized> "${CMAKE_SOURCE_DIR}/db/portfolio/schema.sql"
 )
+
+utax_add_test(utax_test_corporate_actions
+  test_corporate_actions.c
+)
+
+add_test(NAME utax_test_corporate_actions
+  COMMAND $<TARGET_FILE:utax_test_corporate_actions> "${CMAKE_SOURCE_DIR}/db/portfolio/schema.sql"
+)
+
+utax_add_test(utax_test_corporate_actions_csv
+  test_corporate_actions_csv.c
+)
+
+add_test(NAME utax_test_corporate_actions_csv
+  COMMAND $<TARGET_FILE:utax_test_corporate_actions_csv> "${CMAKE_SOURCE_DIR}/db/portfolio/schema.sql"
+)
