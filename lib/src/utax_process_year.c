@@ -3,6 +3,7 @@
 #include "utax_corporate_actions.h"
 #include "utax_fifo_realized.h"
 #include "utax_fifo_snapshot.h"
+#include "utax_fifo_snapshot_action_applied.h"
 #include "utax_schema.h"
 #include "utax_trades.h"
 
@@ -249,6 +250,36 @@ static utax_rc utax__collect_actions_for_broker_year(utax_db_t *db,
     return UTAX_OK;
 }
 
+static utax_rc utax__action_already_applied_for_lot(utax_db_t *db,
+                                                     long long lot_id,
+                                                     long long action_id,
+                                                     int *out_applied)
+{
+    if (!db || !out_applied) return UTAX_ERR_INVALID_ARG;
+    *out_applied = 0;
+
+    utax_fifo_snapshot_action_applied_filter f;
+    memset(&f, 0, sizeof(f));
+    f.has_lot_id = 1;
+    f.lot_id = lot_id;
+    f.has_action_id = 1;
+    f.action_id = action_id;
+
+    long long count = 0;
+    utax_rc rc = utax_fifo_snapshot_action_applied_count_filtered(db, &f, &count);
+    if (rc != UTAX_OK) return rc;
+
+    *out_applied = (count > 0) ? 1 : 0;
+    return UTAX_OK;
+}
+
+static utax_rc utax__mark_action_applied_for_lot(utax_db_t *db, long long lot_id, long long action_id) {
+    utax_fifo_snapshot_action_applied_row row;
+    row.lot_id = lot_id;
+    row.action_id = action_id;
+    return utax_fifo_snapshot_action_applied_insert(db, &row);
+}
+
 static utax_rc utax__collect_realized_for_broker_year(utax_db_t *db,
                                                        const char *broker,
                                                        int year,
@@ -334,12 +365,14 @@ static int utax__lot_exists_before_or_on_action(const utax_fifo_snapshot_row *lo
     return strncmp(lot->acq_datetime, action->action_date, 10) <= 0;
 }
 
-static void utax__apply_actions_to_snapshots(utax_fifo_snapshot_row *rows,
-                                             size_t row_count,
-                                             const utax_corporate_actions_row *actions,
-                                             size_t action_count)
+static utax_rc utax__apply_actions_to_snapshots(utax_db_t *db,
+                                                utax_fifo_snapshot_row *rows,
+                                                size_t row_count,
+                                                const utax_corporate_actions_row *actions,
+                                                size_t action_count,
+                                                int track_idempotency)
 {
-    if (!rows || !actions) return;
+    if (!rows || !actions) return UTAX_OK;
 
     for (size_t a = 0; a < action_count; ++a) {
         const utax_corporate_actions_row *act = &actions[a];
@@ -352,14 +385,28 @@ static void utax__apply_actions_to_snapshots(utax_fifo_snapshot_row *rows,
             if (strcmp(lot->ticker, act->from_ticker) != 0) continue;
             if (!utax__lot_exists_before_or_on_action(lot, act)) continue;
 
+            if (track_idempotency && lot->lot_id > 0) {
+                int already_applied = 0;
+                utax_rc rc = utax__action_already_applied_for_lot(db, lot->lot_id, act->action_id, &already_applied);
+                if (rc != UTAX_OK) return rc;
+                if (already_applied) continue;
+            }
+
             lot->qty_remaining *= ratio;
             lot->cost_per_share_eur /= ratio;
 
             if (strcmp(act->action_type, "SPLIT") != 0 && act->to_ticker[0] != '\0') {
                 utax__copy_text(lot->ticker, sizeof(lot->ticker), act->to_ticker);
             }
+
+            if (track_idempotency && lot->lot_id > 0) {
+                utax_rc rc = utax__mark_action_applied_for_lot(db, lot->lot_id, act->action_id);
+                if (rc != UTAX_OK) return rc;
+            }
         }
     }
+
+    return UTAX_OK;
 }
 
 static utax_rc utax__append_realized_row(utax_fifo_realized_row **rows,
@@ -471,8 +518,10 @@ UTAX_API void process_year_trades(utax_db_t *db, uint16_t year) {
         if (rc != UTAX_OK) goto broker_cleanup;
 
         if (action_count > 0) {
-            utax__apply_actions_to_snapshots(snapshot_rows, snapshot_count, action_rows, action_count);
-            utax__apply_actions_to_snapshots(buy_snapshot_rows, buy_snapshot_count, action_rows, action_count);
+            rc = utax__apply_actions_to_snapshots(db, snapshot_rows, snapshot_count, action_rows, action_count, 1);
+            if (rc != UTAX_OK) goto broker_cleanup;
+            rc = utax__apply_actions_to_snapshots(db, buy_snapshot_rows, buy_snapshot_count, action_rows, action_count, 0);
+            if (rc != UTAX_OK) goto broker_cleanup;
         }
 
         utax_fifo_realized_row *realized_rows = NULL;

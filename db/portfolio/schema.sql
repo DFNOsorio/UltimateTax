@@ -98,6 +98,20 @@ ON fifo_snapshot(broker, tax_year, ticker, acq_datetime, lot_id);
 CREATE INDEX IF NOT EXISTS idx_fifo_snapshot_acq_trade
 ON fifo_snapshot(acq_trade_id);
 
+CREATE TABLE IF NOT EXISTS fifo_snapshot_action_applied (
+    lot_id       INTEGER NOT NULL,
+    action_id    INTEGER NOT NULL,
+
+    PRIMARY KEY (lot_id, action_id),
+
+    FOREIGN KEY (lot_id) REFERENCES fifo_snapshot(lot_id) ON DELETE CASCADE,
+    FOREIGN KEY (action_id) REFERENCES corporate_actions(action_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_fifo_snapshot_action_applied_action
+ON fifo_snapshot_action_applied(action_id, lot_id);
+
+
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- fifo_realized

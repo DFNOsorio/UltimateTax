@@ -73,6 +73,11 @@ typedef struct utax_fifo_realized_row {
     char buy_datetime[UTAX_DT_MAX];
 } utax_fifo_realized_row;
 
+typedef struct utax_fifo_snapshot_action_applied_row {
+    long long lot_id;
+    long long action_id;
+} utax_fifo_snapshot_action_applied_row;
+
 typedef struct utax_dividends_row {
     long long dividend_id;
 
