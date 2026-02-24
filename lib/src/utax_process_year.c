@@ -1,6 +1,7 @@
 #include "utax_process_year.h"
 
 #include "utax_corporate_actions.h"
+#include "utax_dividends.h"
 #include "utax_fifo_realized.h"
 #include "utax_fifo_snapshot.h"
 #include "utax_fifo_snapshot_action_applied.h"
@@ -658,4 +659,88 @@ broker_cleanup:
     }
 
     free(brokers);
+}
+
+UTAX_API utax_rc process_year_dividends_country_totals(
+    utax_db_t *db,
+    uint16_t year,
+    utax_dividends_country_total_row *out_rows,
+    size_t out_cap,
+    size_t *out_count,
+    size_t *out_required
+) {
+    if (!db || !out_count) return UTAX_ERR_INVALID_ARG;
+    if (!out_rows && out_cap != 0) return UTAX_ERR_INVALID_ARG;
+
+    *out_count = 0;
+    if (out_required) *out_required = 0;
+
+    utax_dividends_filter f;
+    memset(&f, 0, sizeof(f));
+    f.has_year = 1;
+    f.year = (int)year;
+    f.year_mode = UTAX_YEAR_EXACT;
+
+    long long needed_ll = 0;
+    utax_rc rc = utax_dividends_count_filtered(db, &f, &needed_ll);
+    if (rc != UTAX_OK) return rc;
+    if (needed_ll <= 0) return UTAX_OK;
+
+    size_t needed = (size_t)needed_ll;
+    utax_dividends_row *rows = (utax_dividends_row *)calloc(needed, sizeof(*rows));
+    if (!rows) return UTAX_ERR_NOMEM;
+
+    size_t got = 0;
+    size_t req = 0;
+    rc = utax_dividends_get_filtered(db, &f, rows, needed, &got, &req);
+    if (rc != UTAX_OK) {
+        free(rows);
+        return rc;
+    }
+
+    utax_dividends_country_total_row *agg = (utax_dividends_country_total_row *)calloc(got, sizeof(*agg));
+    if (!agg) {
+        free(rows);
+        return UTAX_ERR_NOMEM;
+    }
+
+    size_t agg_n = 0;
+    for (size_t i = 0; i < got; ++i) {
+        const utax_dividends_row *d = &rows[i];
+        double conv = (d->conversion_rate_eur > 0.0) ? d->conversion_rate_eur : 1.0;
+        double gross_eur = d->total_amount / conv;
+        double taxes_eur = d->tax / conv;
+
+        size_t k = 0;
+        int found = 0;
+        for (; k < agg_n; ++k) {
+            if (strcmp(agg[k].country, d->country) == 0) {
+                found = 1;
+                break;
+            }
+        }
+
+        if (!found) {
+            utax__copy_text(agg[agg_n].country, sizeof(agg[agg_n].country), d->country);
+            k = agg_n++;
+        }
+
+        agg[k].gross_amount_eur += gross_eur;
+        agg[k].taxes_eur += taxes_eur;
+        agg[k].total_eur = agg[k].gross_amount_eur - agg[k].taxes_eur;
+    }
+
+    if (out_required) *out_required = agg_n;
+    if (agg_n > out_cap) {
+        free(agg);
+        free(rows);
+        return UTAX_ERR_NO_SPACE;
+    }
+
+    for (size_t i = 0; i < agg_n; ++i) out_rows[i] = agg[i];
+    *out_count = agg_n;
+
+    free(agg);
+    free(rows);
+    return UTAX_OK;
 }

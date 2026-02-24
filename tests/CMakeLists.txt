@@ -110,3 +110,11 @@ utax_add_test(utax_test_process_year
 add_test(NAME utax_test_process_year
   COMMAND $<TARGET_FILE:utax_test_process_year> "${CMAKE_SOURCE_DIR}/db/portfolio/schema.sql"
 )
+
+utax_add_test(utax_test_process_year_dividends
+  test_process_year_dividends.c
+)
+
+add_test(NAME utax_test_process_year_dividends
+  COMMAND $<TARGET_FILE:utax_test_process_year_dividends> "${CMAKE_SOURCE_DIR}/db/portfolio/schema.sql"
+)
