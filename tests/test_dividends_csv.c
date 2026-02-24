@@ -43,8 +43,28 @@ static void make_temp_path(char *out, size_t out_sz, const char *prefix) {
 
 static void write_text_file(const char *path, const char *text) {
     FILE *f = NULL;
-    assert(UTAX_FOPEN(f, path, "wb"));
-    fwrite(text, 1, strlen(text), f);
+
+    if (!path || !text) {
+        fprintf(stderr, "write_text_file: invalid args\n");
+        assert(0);
+        return;
+    }
+
+    if (!UTAX_FOPEN(f, path, "wb")) {
+        fprintf(stderr, "write_text_file: failed to open '%s'\n", path);
+        assert(0);
+        return;
+    }
+
+    size_t n = strlen(text);
+    size_t w = fwrite(text, 1, n, f);
+    if (w != n) {
+        fprintf(stderr, "write_text_file: fwrite failed (wrote %zu/%zu)\n", w, n);
+        fclose(f);
+        assert(0);
+        return;
+    }
+
     fclose(f);
 }
 
