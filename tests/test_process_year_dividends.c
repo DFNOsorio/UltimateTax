@@ -44,12 +44,11 @@ static void make_temp_db_path(char *out, size_t out_sz) {
 }
 
 static const utax_dividends_country_total_row *find_country(
-    const utax_dividends_country_total_row *rows,
-    size_t n,
+    const utax_dividends_country_total_node *head,
     const char *country
 ) {
-    for (size_t i = 0; i < n; ++i) {
-        if (strcmp(rows[i].country, country) == 0) return &rows[i];
+    for (const utax_dividends_country_total_node *p = head; p; p = p->next) {
+        if (strcmp(p->row.country, country) == 0) return &p->row;
     }
     return NULL;
 }
@@ -153,27 +152,21 @@ int main(int argc, char **argv) {
         assert(id > 0);
     }
 
-    utax_dividends_country_total_row tiny[1];
-    size_t out_n = 0;
-    size_t req = 0;
+    utax_dividends_country_total_node *head = NULL;
+    size_t total = 0;
 
-    rc = process_year_dividends_country_totals(db, 2025, tiny, 1, &out_n, &req);
-    assert(rc == UTAX_ERR_NO_SPACE);
-    assert(out_n == 0);
-    assert(req == 3);
-
-    utax_dividends_country_total_row out[8];
-    out_n = 0;
-    req = 0;
-
-    rc = process_year_dividends_country_totals(db, 2025, out, 8, &out_n, &req);
+    size_t no_export_total = 999;
+    rc = process_year_dividends_country_totals(db, 2025, NULL, &no_export_total);
     assert(rc == UTAX_OK);
-    assert(out_n == 3);
-    assert(req == 3);
+    assert(no_export_total == 999);
 
-    const utax_dividends_country_total_row *us = find_country(out, out_n, "US");
-    const utax_dividends_country_total_row *ie = find_country(out, out_n, "IE");
-    const utax_dividends_country_total_row *br = find_country(out, out_n, "BR");
+    rc = process_year_dividends_country_totals(db, 2025, &head, &total);
+    assert(rc == UTAX_OK);
+    assert(total == 3);
+
+    const utax_dividends_country_total_row *us = find_country(head, "US");
+    const utax_dividends_country_total_row *ie = find_country(head, "IE");
+    const utax_dividends_country_total_row *br = find_country(head, "BR");
 
     assert(us && ie && br);
 
@@ -189,16 +182,21 @@ int main(int argc, char **argv) {
     assert(UTAX_NEAR(br->taxes_eur, 2.0));
     assert(UTAX_NEAR(br->total_eur, 18.0));
 
-    out_n = 0;
-    req = 0;
-    rc = process_year_dividends_country_totals(db, 2024, out, 8, &out_n, &req);
+    rc = process_year_dividends_country_totals(db, 2024, &head, &total);
     assert(rc == UTAX_OK);
-    assert(out_n == 1);
-    assert(req == 1);
-    assert(strcmp(out[0].country, "US") == 0);
-    assert(UTAX_NEAR(out[0].gross_amount_eur, 999.0));
-    assert(UTAX_NEAR(out[0].taxes_eur, 99.0));
-    assert(UTAX_NEAR(out[0].total_eur, 900.0));
+    assert(total == 4);
+
+    const utax_dividends_country_total_node *last = head;
+    while (last && last->next) last = last->next;
+    assert(last != NULL);
+    assert(strcmp(last->row.country, "US") == 0);
+    assert(UTAX_NEAR(last->row.gross_amount_eur, 999.0));
+    assert(UTAX_NEAR(last->row.taxes_eur, 99.0));
+    assert(UTAX_NEAR(last->row.total_eur, 900.0));
+
+    process_year_free_dividends_country_total_list(&head, &total);
+    assert(head == NULL);
+    assert(total == 0);
 
     rc = utax_db_close(db);
     assert(rc == UTAX_OK);

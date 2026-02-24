@@ -152,7 +152,27 @@ int main(int argc, char **argv) {
         assert(rid > 0);
     }
 
-    process_year_trades(db, 2025);
+    size_t no_export_total = 1234;
+    rc = process_year_trades(db, 2030, NULL, &no_export_total);
+    assert(rc == UTAX_OK);
+    assert(no_export_total == 1234);
+
+    utax_process_year_realized_node *export_head = NULL;
+    size_t export_total = 0;
+    rc = process_year_trades(db, 2025, &export_head, &export_total);
+    assert(rc == UTAX_OK);
+    assert(export_total == 2);
+
+    {
+        const utax_process_year_realized_node *n = export_head;
+        assert(n != NULL);
+        assert(strcmp(n->row.ticker, "ABC") == 0);
+        assert(n->row.match_seq == 1);
+        n = n->next;
+        assert(n != NULL);
+        assert(strcmp(n->row.ticker, "ABC") == 0);
+        assert(n->row.match_seq == 2);
+    }
 
     {
         utax_fifo_realized_filter f;
@@ -233,6 +253,44 @@ int main(int argc, char **argv) {
 
     rc = utax_fifo_snapshot_delete_by_id(db, pre_2024_snapshot_lot_id);
     assert(rc == UTAX_ERR_NOT_FOUND);
+
+    /* run the same processing year again to explicitly validate re-run behavior */
+    rc = process_year_trades(db, 2025, NULL, NULL);
+    assert(rc == UTAX_OK);
+
+    {
+        utax_fifo_realized_filter f;
+        memset(&f, 0, sizeof(f));
+        f.has_year = 1;
+        f.year = 2025;
+        f.year_mode = UTAX_YEAR_EXACT;
+        f.has_broker = 1;
+        UTAX_STRNCPY(f.broker, sizeof(f.broker), "IKBR");
+
+        long long cnt = 0;
+        rc = utax_fifo_realized_count_filtered(db, &f, &cnt);
+        assert(rc == UTAX_OK);
+        assert(cnt == 2);
+    }
+
+    {
+        utax_fifo_snapshot_filter f;
+        memset(&f, 0, sizeof(f));
+        f.has_year = 1;
+        f.year = 2025;
+        f.year_mode = UTAX_YEAR_EXACT;
+        f.has_broker = 1;
+        UTAX_STRNCPY(f.broker, sizeof(f.broker), "IKBR");
+
+        long long cnt = 0;
+        rc = utax_fifo_snapshot_count_filtered(db, &f, &cnt);
+        assert(rc == UTAX_OK);
+        assert(cnt == 0);
+    }
+
+    process_year_free_realized_list(&export_head, &export_total);
+    assert(export_head == NULL);
+    assert(export_total == 0);
 
     rc = utax_db_close(db);
     assert(rc == UTAX_OK);
