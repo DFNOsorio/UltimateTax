@@ -1,6 +1,7 @@
 #ifndef ULTIMATETAX_UTAX_DB_H
 #define ULTIMATETAX_UTAX_DB_H
 
+#include <stdint.h>
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -81,6 +82,7 @@ UTAX_API utax_rc utax_db_close(utax_db_t *db);
 
 /* Last error string (owned by handle; valid until close) */
 UTAX_API const char *utax_db_last_error(const utax_db_t *db);
+
 
 #ifdef __cplusplus
 }
