@@ -101,45 +101,26 @@ int main(int argc, char **argv) {
         assert(lot_ids[i] > 0);
     }
 
-    long long action_ids[3] = {0};
-    {
-        utax_corporate_actions_row a;
-        memset(&a, 0, sizeof(a));
-        UTAX_STRNCPY(a.broker, sizeof(a.broker), "IKBR");
-        UTAX_STRNCPY(a.action_date, sizeof(a.action_date), "2025-07-30");
-        UTAX_STRNCPY(a.action_type, sizeof(a.action_type), "SPLIT");
-        UTAX_STRNCPY(a.from_ticker, sizeof(a.from_ticker), "AAPL");
-        a.to_ticker[0] = '\0';
-        a.from_qty = 2.0;
-        a.to_qty = 1.0;
-        rc = utax_corporate_actions_insert(db, &a, &action_ids[0]);
+    const size_t action_n = utax_mock_fifo_snapshot_corporate_actions_count();
+    assert(action_n <= 8);
+    long long action_ids[8] = {0};
+    for (size_t i = 0; i < action_n; ++i) {
+        utax_corporate_actions_row a = UTAX_MOCK_FIFO_SNAPSHOT_CORPORATE_ACTIONS[i].row;
+        rc = utax_corporate_actions_insert(db, &a, &action_ids[i]);
         assert(rc == UTAX_OK);
+        assert(action_ids[i] > 0);
     }
+
     {
-        utax_corporate_actions_row a;
-        memset(&a, 0, sizeof(a));
-        UTAX_STRNCPY(a.broker, sizeof(a.broker), "IKBR");
-        UTAX_STRNCPY(a.action_date, sizeof(a.action_date), "2026-08-01");
-        UTAX_STRNCPY(a.action_type, sizeof(a.action_type), "CONVERSION");
-        UTAX_STRNCPY(a.from_ticker, sizeof(a.from_ticker), "MSFT");
-        UTAX_STRNCPY(a.to_ticker, sizeof(a.to_ticker), "MSF2");
-        a.from_qty = 1.0;
-        a.to_qty = 1.0;
-        rc = utax_corporate_actions_insert(db, &a, &action_ids[1]);
+        utax_corporate_actions_filter f;
+        memset(&f, 0, sizeof(f));
+        f.has_broker = 1;
+        UTAX_STRNCPY(f.broker, sizeof(f.broker), "REVO -> IKBR");
+
+        long long c = -1;
+        rc = utax_corporate_actions_count_filtered(db, &f, &c);
         assert(rc == UTAX_OK);
-    }
-    {
-        utax_corporate_actions_row a;
-        memset(&a, 0, sizeof(a));
-        UTAX_STRNCPY(a.broker, sizeof(a.broker), "IKBR");
-        UTAX_STRNCPY(a.action_date, sizeof(a.action_date), "2026-09-01");
-        UTAX_STRNCPY(a.action_type, sizeof(a.action_type), "CONVERSION");
-        UTAX_STRNCPY(a.from_ticker, sizeof(a.from_ticker), "MSFT");
-        UTAX_STRNCPY(a.to_ticker, sizeof(a.to_ticker), "MSF3");
-        a.from_qty = 1.0;
-        a.to_qty = 1.0;
-        rc = utax_corporate_actions_insert(db, &a, &action_ids[2]);
-        assert(rc == UTAX_OK);
+        assert(c == 2);
     }
 
     long long total = -1;

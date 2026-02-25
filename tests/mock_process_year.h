@@ -11,6 +11,28 @@ typedef struct utax_process_year_snapshot_mock {
 const utax_trades_row UTAX_MOCK_PROCESS_YEAR_TRADES[] = {
     {
         .id = 0,
+        .quantity = 10.0, .price_per_share = 40.0, .commission = 0.0, .conversion_rate_eur = 1.0,
+        .trade_year = 0,
+        .broker = "REVO",
+        .trade_datetime = "2022-12-01 10:00",
+        .type = "BUY",
+        .ticker = "WFC",
+        .country = "US",
+        .currency = "USD"
+    },
+    {
+        .id = 0,
+        .quantity = 10.0, .price_per_share = 45.0, .commission = 1.0, .conversion_rate_eur = 1.0,
+        .trade_year = 0,
+        .broker = "IKBR",
+        .trade_datetime = "2023-06-01 10:00",
+        .type = "SELL",
+        .ticker = "WFC",
+        .country = "US",
+        .currency = "USD"
+    },
+    {
+        .id = 0,
         .quantity = 8.0, .price_per_share = 100.0, .commission = 8.0, .conversion_rate_eur = 1.0,
         .trade_year = 0,
         .broker = "IKBR",
@@ -71,6 +93,21 @@ const utax_process_year_snapshot_mock UTAX_MOCK_PROCESS_YEAR_SNAPSHOTS[] = {
         .row = {
             .lot_id = 0,
             .acq_trade_id = 0,
+            .qty_remaining = 10.0,
+            .cost_per_share_eur = 40.0,
+            .acq_commission_eur = 0.0,
+            .tax_year = 2022,
+            .broker = "REVO",
+            .ticker = "WFC",
+            .acq_datetime = "2022-12-01 10:00",
+            .country = "US"
+        },
+        .acq_trade_datetime_key = "2022-12-01 10:00"
+    },
+    {
+        .row = {
+            .lot_id = 0,
+            .acq_trade_id = 0,
             .qty_remaining = 4.0,
             .cost_per_share_eur = 100.0,
             .acq_commission_eur = 2.0,
@@ -100,6 +137,19 @@ const utax_process_year_snapshot_mock UTAX_MOCK_PROCESS_YEAR_SNAPSHOTS[] = {
 };
 
 const utax_corporate_actions_row UTAX_MOCK_PROCESS_YEAR_ACTIONS[] = {
+    {
+        .action_id = 0,
+        .from_qty = 1.0,
+        .to_qty = 1.0,
+        .ratio = 0.0,
+        .action_year = 0,
+        ._pad0 = 0,
+        .broker = "REVO -> IKBR",
+        .action_date = "2023-05-10",
+        .action_type = "CONVERSION",
+        .from_ticker = "WFC",
+        .to_ticker = "WFC"
+    },
     {
         .action_id = 0,
         .from_qty = 1.0,

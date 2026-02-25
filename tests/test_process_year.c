@@ -152,6 +152,48 @@ int main(int argc, char **argv) {
         assert(rid > 0);
     }
 
+    rc = process_year_trades(db, 2023, NULL, NULL);
+    assert(rc == UTAX_OK);
+
+    {
+        utax_fifo_realized_filter f;
+        memset(&f, 0, sizeof(f));
+        f.has_year = 1;
+        f.year = 2023;
+        f.year_mode = UTAX_YEAR_EXACT;
+        f.has_broker = 1;
+        UTAX_STRNCPY(f.broker, sizeof(f.broker), "IKBR");
+
+        long long cnt = 0;
+        rc = utax_fifo_realized_count_filtered(db, &f, &cnt);
+        assert(rc == UTAX_OK);
+        assert(cnt == 1);
+
+        utax_fifo_realized_row rows[4];
+        size_t out_n = 0, req = 0;
+        rc = utax_fifo_realized_get_filtered(db, &f, rows, 4, &out_n, &req);
+        assert(rc == UTAX_OK);
+        assert(out_n == 1);
+        assert(strcmp(rows[0].ticker, "WFC") == 0);
+        assert(strcmp(rows[0].buy_datetime, "2022-12-01 10:00") == 0);
+        assert(UTAX_NEAR(rows[0].qty_matched, 10.0));
+    }
+
+    {
+        utax_fifo_snapshot_filter f;
+        memset(&f, 0, sizeof(f));
+        f.has_year = 1;
+        f.year = 2023;
+        f.year_mode = UTAX_YEAR_EXACT;
+        f.has_broker = 1;
+        UTAX_STRNCPY(f.broker, sizeof(f.broker), "IKBR");
+
+        long long cnt = 0;
+        rc = utax_fifo_snapshot_count_filtered(db, &f, &cnt);
+        assert(rc == UTAX_OK);
+        assert(cnt == 0);
+    }
+
     size_t no_export_total = 1234;
     rc = process_year_trades(db, 2030, NULL, &no_export_total);
     assert(rc == UTAX_OK);
