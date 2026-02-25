@@ -29,38 +29,14 @@ static void utax__copy_text(char *dst, size_t dst_sz, const char *src) {
     dst[n] = '\0';
 }
 
-static utax_rc utax__append_realized_export_node(
-    utax_process_year_realized_node **io_head,
-    utax_process_year_realized_node **io_tail,
-    size_t *io_total,
-    const utax_fifo_realized_row *row
+UTAX_API void process_year_free_realized_rows(
+    utax_fifo_realized_row **inout_rows,
+    size_t *inout_count
 ) {
-    utax_process_year_realized_node *n = (utax_process_year_realized_node *)calloc(1, sizeof(*n));
-    if (!n) return UTAX_ERR_NOMEM;
-    n->row = *row;
-    n->next = NULL;
-
-    if (!*io_head) *io_head = n;
-    else (*io_tail)->next = n;
-    *io_tail = n;
-    (*io_total)++;
-    return UTAX_OK;
-}
-
-UTAX_API void process_year_free_realized_list(
-    utax_process_year_realized_node **inout_head,
-    size_t *inout_total_elems
-) {
-    if (!inout_head || !inout_total_elems) return;
-
-    utax_process_year_realized_node *p = *inout_head;
-    while (p) {
-        utax_process_year_realized_node *n = p->next;
-        free(p);
-        p = n;
-    }
-    *inout_head = NULL;
-    *inout_total_elems = 0;
+    if (!inout_rows || !inout_count) return;
+    free(*inout_rows);
+    *inout_rows = NULL;
+    *inout_count = 0;
 }
 
 static utax_rc utax__collect_brokers_for_year(utax_db_t *db,
@@ -503,19 +479,21 @@ static utax_rc utax__delete_snapshot_for_broker_year(utax_db_t *db, const char *
 UTAX_API utax_rc process_year_trades(
     utax_db_t *db,
     uint16_t year,
-    utax_process_year_realized_node **inout_head,
-    size_t *inout_total_elems
+    utax_fifo_realized_row **out_rows,
+    size_t *out_count
 ) {
     if (!db) return UTAX_ERR_INVALID_ARG;
-    if (inout_head && !inout_total_elems) return UTAX_ERR_INVALID_ARG;
+    if (out_rows && !out_count) return UTAX_ERR_INVALID_ARG;
 
     char (*brokers)[UTAX_BROKER_MAX] = NULL;
     size_t broker_count = 0;
 
-    utax_process_year_realized_node *tail = NULL;
-    if (inout_head) {
-        tail = *inout_head;
-        while (tail && tail->next) tail = tail->next;
+    utax_fifo_realized_row *export_rows = NULL;
+    size_t export_count = 0;
+    size_t export_cap = 0;
+    if (out_rows) {
+        *out_rows = NULL;
+        *out_count = 0;
     }
 
     utax_rc rc = utax__collect_brokers_for_year(db, year, &brokers, &broker_count);
@@ -656,9 +634,9 @@ UTAX_API utax_rc process_year_trades(
                 goto broker_cleanup;
             }
 
-            if (inout_head) {
+            if (out_rows) {
                 for (size_t r = 0; r < realized_count; ++r) {
-                    rc = utax__append_realized_export_node(inout_head, &tail, inout_total_elems, &realized_rows[r]);
+                    rc = utax__append_realized_row(&export_rows, &export_count, &export_cap, &realized_rows[r]);
                     if (rc != UTAX_OK) {
                         free(realized_rows);
                         goto broker_cleanup;
@@ -719,17 +697,32 @@ broker_cleanup:
     }
 
     free(brokers);
+    if (rc != UTAX_OK) {
+        free(export_rows);
+        return rc;
+    }
+
+    if (out_rows) {
+        *out_rows = export_rows;
+        *out_count = export_count;
+    } else {
+        free(export_rows);
+    }
     return rc;
 }
 
 UTAX_API utax_rc process_year_dividends_country_totals(
     utax_db_t *db,
     uint16_t year,
-    utax_dividends_country_total_node **inout_head,
-    size_t *inout_total_elems
+    utax_dividends_country_total_row **out_rows,
+    size_t *out_count
 ) {
     if (!db) return UTAX_ERR_INVALID_ARG;
-    if (inout_head && !inout_total_elems) return UTAX_ERR_INVALID_ARG;
+    if (out_rows && !out_count) return UTAX_ERR_INVALID_ARG;
+    if (out_rows) {
+        *out_rows = NULL;
+        *out_count = 0;
+    }
 
     utax_dividends_filter f;
     memset(&f, 0, sizeof(f));
@@ -786,25 +779,17 @@ UTAX_API utax_rc process_year_dividends_country_totals(
         agg[k].total_eur = agg[k].gross_amount_eur - agg[k].taxes_eur;
     }
 
-    if (inout_head) {
-        utax_dividends_country_total_node *tail = *inout_head;
-        while (tail && tail->next) tail = tail->next;
-
-        for (size_t i = 0; i < agg_n; ++i) {
-            utax_dividends_country_total_node *n = (utax_dividends_country_total_node *)calloc(1, sizeof(*n));
-            if (!n) {
-                free(agg);
-                free(rows);
-                return UTAX_ERR_NOMEM;
-            }
-            n->row = agg[i];
-            n->next = NULL;
-
-            if (!*inout_head) *inout_head = n;
-            else tail->next = n;
-            tail = n;
-            (*inout_total_elems)++;
+    if (out_rows) {
+        utax_dividends_country_total_row *res =
+            (utax_dividends_country_total_row *)calloc(agg_n, sizeof(*res));
+        if (!res) {
+            free(agg);
+            free(rows);
+            return UTAX_ERR_NOMEM;
         }
+        for (size_t i = 0; i < agg_n; ++i) res[i] = agg[i];
+        *out_rows = res;
+        *out_count = agg_n;
     }
 
     free(agg);
@@ -812,18 +797,12 @@ UTAX_API utax_rc process_year_dividends_country_totals(
     return UTAX_OK;
 }
 
-UTAX_API void process_year_free_dividends_country_total_list(
-    utax_dividends_country_total_node **inout_head,
-    size_t *inout_total_elems
+UTAX_API void process_year_free_dividends_country_total_rows(
+    utax_dividends_country_total_row **inout_rows,
+    size_t *inout_count
 ) {
-    if (!inout_head || !inout_total_elems) return;
-
-    utax_dividends_country_total_node *p = *inout_head;
-    while (p) {
-        utax_dividends_country_total_node *n = p->next;
-        free(p);
-        p = n;
-    }
-    *inout_head = NULL;
-    *inout_total_elems = 0;
+    if (!inout_rows || !inout_count) return;
+    free(*inout_rows);
+    *inout_rows = NULL;
+    *inout_count = 0;
 }

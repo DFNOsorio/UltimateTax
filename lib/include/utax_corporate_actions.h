@@ -25,11 +25,6 @@ typedef struct utax_corporate_actions_filter {
     int offset;
 } utax_corporate_actions_filter;
 
-typedef struct utax_corporate_actions_node {
-    utax_corporate_actions_row row;
-    struct utax_corporate_actions_node *next;
-} utax_corporate_actions_node;
-
 
 /* CRUD */
 UTAX_API utax_rc utax_corporate_actions_insert(utax_db_t *db, const utax_corporate_actions_row *row, long long *out_action_id);
@@ -57,18 +52,19 @@ UTAX_API utax_rc utax_corporate_actions_get_filtered(utax_db_t *db,
                                                      size_t *out_required);
 
 UTAX_API utax_rc utax_corporate_actions_parse_csv_file(const char *path,
-                                                       utax_corporate_actions_node **inout_head,
+                                                       utax_corporate_actions_row **inout_rows,
                                                        size_t *inout_total_elems);
 
-UTAX_API void utax_corporate_actions_free_list(utax_corporate_actions_node **inout_head,
+UTAX_API void utax_corporate_actions_free_rows(utax_corporate_actions_row **inout_rows,
                                                size_t *inout_total_elems);
 
-/* Batch insert from linked list (transaction + reused statement) */
-UTAX_API utax_rc utax_corporate_actions_insert_many_list(utax_db_t *db,
-                                                         utax_corporate_actions_node *head,
+/* Batch insert from dynamic array (transaction + reused statement) */
+UTAX_API utax_rc utax_corporate_actions_insert_many_array(utax_db_t *db,
+                                                         utax_corporate_actions_row *rows,
+                                                         size_t n,
                                                          size_t *out_inserted);
 
-/* parse -> insert -> free (always frees list) */
+/* parse -> insert -> free (always frees rows) */
 UTAX_API utax_rc utax_corporate_actions_insert_many_from_csv_file(utax_db_t *db,
                                                                   const char *path,
                                                                   size_t *out_inserted);

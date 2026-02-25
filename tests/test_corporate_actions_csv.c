@@ -94,43 +94,43 @@ int main(int argc, char **argv) {
     make_temp_path(csv_path, sizeof(csv_path), "csv");
     write_text_file_or_die(csv_path, UTAX_CORP_ACTIONS_CSV_TEXT);
 
-    /* parse -> list */
-    utax_corporate_actions_node *head = NULL;
+    /* parse -> dynamic array */
+    utax_corporate_actions_row *rows = NULL;
     size_t total = 0;
 
-    rc = utax_corporate_actions_parse_csv_file(csv_path, &head, &total);
+    rc = utax_corporate_actions_parse_csv_file(csv_path, &rows, &total);
     UTAX_TEST_REQUIRE_RC(rc, "parse_csv_file failed");
     UTAX_TEST_REQUIRE(total == 3, "expected 3 parsed rows");
-    UTAX_TEST_REQUIRE(head != NULL && head->next != NULL, "expected linked list");
+    UTAX_TEST_REQUIRE(rows != NULL, "expected array rows");
 
-    /* verify SPLIT row has empty to_ticker in node */
+    /* verify SPLIT row has empty to_ticker in array */
     {
         int saw_split = 0;
-        for (utax_corporate_actions_node *p = head; p; p = p->next) {
-            if (strcmp(p->row.action_type, "SPLIT") == 0) {
+        for (size_t i = 0; i < total; ++i) {
+            if (strcmp(rows[i].action_type, "SPLIT") == 0) {
                 saw_split = 1;
-                UTAX_TEST_REQUIRE(p->row.to_ticker[0] == '\0', "split node to_ticker must be empty");
-                UTAX_TEST_REQUIRE(p->row.from_qty == 8.0 && p->row.to_qty == 1.0, "split qty mismatch");
+                UTAX_TEST_REQUIRE(rows[i].to_ticker[0] == '\0', "split row to_ticker must be empty");
+                UTAX_TEST_REQUIRE(rows[i].from_qty == 8.0 && rows[i].to_qty == 1.0, "split qty mismatch");
             }
         }
         UTAX_TEST_REQUIRE(saw_split, "did not find SPLIT row");
     }
 
-    /* insert list (batch) */
+    /* insert array (batch) */
     size_t inserted = 0;
-    rc = utax_corporate_actions_insert_many_list(db, head, &inserted);
-    if (rc != UTAX_OK) fprintf(stderr, "insert_many_list rc=%d err=%s\n", (int)rc, utax_db_last_error(db));
-    UTAX_TEST_REQUIRE_RC(rc, "insert_many_list failed");
-    UTAX_TEST_REQUIRE(inserted == 3, "insert_many_list inserted mismatch");
+    rc = utax_corporate_actions_insert_many_array(db, rows, total, &inserted);
+    if (rc != UTAX_OK) fprintf(stderr, "insert_many_array rc=%d err=%s\n", (int)rc, utax_db_last_error(db));
+    UTAX_TEST_REQUIRE_RC(rc, "insert_many_array failed");
+    UTAX_TEST_REQUIRE(inserted == 3, "insert_many_array inserted mismatch");
 
     /* verify ids set */
-    for (utax_corporate_actions_node *p = head; p; p = p->next) {
-        UTAX_TEST_REQUIRE(p->row.action_id > 0, "node action_id not set");
+    for (size_t i = 0; i < total; ++i) {
+        UTAX_TEST_REQUIRE(rows[i].action_id > 0, "row action_id not set");
     }
 
-    /* free list */
-    utax_corporate_actions_free_list(&head, &total);
-    UTAX_TEST_REQUIRE(head == NULL, "head should be NULL after free");
+    /* free rows */
+    utax_corporate_actions_free_rows(&rows, &total);
+    UTAX_TEST_REQUIRE(rows == NULL, "rows should be NULL after free");
     UTAX_TEST_REQUIRE(total == 0, "total should be 0 after free");
 
     /* verify DB count */
@@ -156,6 +156,6 @@ int main(int argc, char **argv) {
     remove(db_path);
     remove(csv_path);
 
-    printf("All ultimateTax corporate_actions CSV/list tests passed.\n");
+    printf("All ultimateTax corporate_actions CSV/array tests passed.\n");
     return 0;
 }

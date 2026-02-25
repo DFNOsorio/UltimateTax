@@ -98,35 +98,34 @@ int main(int argc, char **argv) {
         "2019-09-24,14:30,REVO,BUY,GE,1,9.3395,0,US,USD,1.1003\n";
     write_text_file(csv1, txt1);
 
-    /* parse -> list */
-    utax_trades_node *head = NULL;
+    /* parse -> dynamic array */
+    utax_trades_row *rows = NULL;
     size_t total = 0;
 
-    rc = utax_trades_parse_csv_file(csv1, &head, &total);
+    rc = utax_trades_parse_csv_file(csv1, &rows, &total);
     assert(rc == UTAX_OK);
     assert(total == 2);
-    assert(head != NULL);
-    assert(head->next != NULL);
+    assert(rows != NULL);
 
-    /* validate first node */
-    assert(strcmp(head->row.trade_datetime, "2019-09-24 14:30") == 0);
-    assert(strcmp(head->row.broker, "REVO") == 0);
-    assert(strcmp(head->row.type, "BUY") == 0);
-    assert(strcmp(head->row.ticker, "OSTK") == 0);
-    assert(head->row.quantity == 1.0);
-    assert(head->row.price_per_share == 11.77);
-    assert(head->row.commission == 0.0);
-    assert(strcmp(head->row.country, "US") == 0);
-    assert(strcmp(head->row.currency, "USD") == 0);
+    /* validate first row */
+    assert(strcmp(rows[0].trade_datetime, "2019-09-24 14:30") == 0);
+    assert(strcmp(rows[0].broker, "REVO") == 0);
+    assert(strcmp(rows[0].type, "BUY") == 0);
+    assert(strcmp(rows[0].ticker, "OSTK") == 0);
+    assert(rows[0].quantity == 1.0);
+    assert(rows[0].price_per_share == 11.77);
+    assert(rows[0].commission == 0.0);
+    assert(strcmp(rows[0].country, "US") == 0);
+    assert(strcmp(rows[0].currency, "USD") == 0);
 
-    /* batch insert from list */
+    /* batch insert from array */
     size_t inserted = 0;
-    rc = utax_trades_insert_many_list(db, head, &inserted);
-    if (rc != UTAX_OK) fprintf(stderr, "insert_many_list failed: %s\n", utax_db_last_error(db));
+    rc = utax_trades_insert_many_array(db, rows, total, &inserted);
+    if (rc != UTAX_OK) fprintf(stderr, "insert_many_array failed: %s\n", utax_db_last_error(db));
     assert(rc == UTAX_OK);
     assert(inserted == 2);
-    assert(head->row.id > 0);
-    assert(head->next->row.id > 0);
+    assert(rows[0].id > 0);
+    assert(rows[1].id > 0);
 
     long long ctot = -1;
     rc = utax_trades_count_total(db, &ctot);
@@ -145,9 +144,9 @@ int main(int argc, char **argv) {
     assert(rc == UTAX_OK);
     assert(cy == 2);
 
-    /* free list */
-    utax_trades_free_list(&head, &total);
-    assert(head == NULL);
+    /* free rows */
+    utax_trades_free_rows(&rows, &total);
+    assert(rows == NULL);
     assert(total == 0);
 
     /* CSV #2: one row; insert from file path */
@@ -177,6 +176,6 @@ int main(int argc, char **argv) {
     remove(csv1);
     remove(csv2);
 
-    printf("All ultimateTax trades CSV/list tests passed.\n");
+    printf("All ultimateTax trades CSV/array tests passed.\n");
     return 0;
 }

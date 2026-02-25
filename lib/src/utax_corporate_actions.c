@@ -442,19 +442,17 @@ static utax_rc utax__validate_ca_header(char *hdr_line) {
 }
 
 utax_rc utax_corporate_actions_parse_csv_file(const char *path,
-                                              utax_corporate_actions_node **inout_head,
+                                              utax_corporate_actions_row **inout_rows,
                                               size_t *inout_total_elems)
 {
-    if (!path || !inout_head || !inout_total_elems) return UTAX_ERR_INVALID_ARG;
+    if (!path || !inout_rows || !inout_total_elems) return UTAX_ERR_INVALID_ARG;
 
     FILE *f = NULL;
     if (!UTAX_FOPEN(f, path, "rb")) return UTAX_ERR_IO_OPEN;
 
-    utax_corporate_actions_node *tail = *inout_head;
-    while (tail && tail->next) tail = tail->next;
-
-    utax_corporate_actions_node *new_head = NULL;
-    utax_corporate_actions_node *new_tail = NULL;
+    utax_corporate_actions_row *parsed_rows = NULL;
+    size_t parsed_count = 0;
+    size_t parsed_cap = 0;
 
     char line[4096];
 
@@ -484,37 +482,38 @@ utax_rc utax_corporate_actions_parse_csv_file(const char *path,
         char *fields[16] = {0};
         int nf = utax__split_csv_simple(s, fields, 16);
         if (nf != 7) {
-            size_t tmp = 0;
-            utax_corporate_actions_free_list(&new_head, &tmp);
             fclose(f);
+            free(parsed_rows);
             return UTAX_ERR_PARSE;
         }
         for (int i = 0; i < nf; ++i) fields[i] = utax__trim_ws(fields[i]);
 
         utax_rc rcd = utax__validate_iso_date_yyyy_mm_dd(fields[0]);
         if (rcd != UTAX_OK) {
-            size_t tmp = 0;
-            utax_corporate_actions_free_list(&new_head, &tmp);
             fclose(f);
+            free(parsed_rows);
             return rcd;
         }
 
         if (!utax__is_action_type_ok(fields[2])) {
-            size_t tmp = 0;
-            utax_corporate_actions_free_list(&new_head, &tmp);
             fclose(f);
+            free(parsed_rows);
             return UTAX_ERR_BAD_FIELD;
         }
 
-        utax_corporate_actions_node *node = (utax_corporate_actions_node *)calloc(1, sizeof(*node));
-        if (!node) {
-            size_t tmp = 0;
-            utax_corporate_actions_free_list(&new_head, &tmp);
-            fclose(f);
-            return UTAX_ERR_NOMEM;
+        if (parsed_count == parsed_cap) {
+            size_t new_cap = (parsed_cap == 0) ? 8 : (parsed_cap * 2);
+            utax_corporate_actions_row *grown = (utax_corporate_actions_row *)realloc(parsed_rows, new_cap * sizeof(*grown));
+            if (!grown) {
+                fclose(f);
+                free(parsed_rows);
+                return UTAX_ERR_NOMEM;
+            }
+            parsed_rows = grown;
+            parsed_cap = new_cap;
         }
 
-        utax_corporate_actions_row *r = &node->row;
+        utax_corporate_actions_row *r = &parsed_rows[parsed_count];
         memset(r, 0, sizeof(*r));
 
         utax_rc t0 = utax__copy_field(r->action_date, sizeof(r->action_date), fields[0]);
@@ -523,68 +522,52 @@ utax_rc utax_corporate_actions_parse_csv_file(const char *path,
         utax_rc t3 = utax__copy_field(r->from_ticker, sizeof(r->from_ticker), fields[3]);
 
         if (t0 == UTAX_ERR_TRUNCATED || t1 == UTAX_ERR_TRUNCATED || t2 == UTAX_ERR_TRUNCATED || t3 == UTAX_ERR_TRUNCATED) {
-            free(node);
-            size_t tmp = 0;
-            utax_corporate_actions_free_list(&new_head, &tmp);
             fclose(f);
+            free(parsed_rows);
             return UTAX_ERR_TRUNCATED;
         }
         if (t0 != UTAX_OK || t1 != UTAX_OK || t2 != UTAX_OK || t3 != UTAX_OK) {
-            free(node);
-            size_t tmp = 0;
-            utax_corporate_actions_free_list(&new_head, &tmp);
             fclose(f);
+            free(parsed_rows);
             return UTAX_ERR_PARSE;
         }
 
         utax_rc rq1 = utax__parse_double_strict(fields[4], &r->from_qty);
         utax_rc rq2 = utax__parse_double_strict(fields[6], &r->to_qty);
         if (rq1 == UTAX_ERR_OVERFLOW || rq2 == UTAX_ERR_OVERFLOW) {
-            free(node);
-            size_t tmp = 0;
-            utax_corporate_actions_free_list(&new_head, &tmp);
             fclose(f);
+            free(parsed_rows);
             return UTAX_ERR_OVERFLOW;
         }
         if (rq1 != UTAX_OK || rq2 != UTAX_OK || r->from_qty <= 0.0 || r->to_qty <= 0.0) {
-            free(node);
-            size_t tmp = 0;
-            utax_corporate_actions_free_list(&new_head, &tmp);
             fclose(f);
+            free(parsed_rows);
             return UTAX_ERR_BAD_FIELD;
         }
 
         /* SPLIT rules: to_ticker must be empty; others must have to_ticker */
         if (strcmp(r->action_type, "SPLIT") == 0) {
             if (fields[5] && fields[5][0] != '\0') {
-                free(node);
-                size_t tmp = 0;
-                utax_corporate_actions_free_list(&new_head, &tmp);
                 fclose(f);
+                free(parsed_rows);
                 return UTAX_ERR_BAD_FIELD;
             }
             r->to_ticker[0] = '\0';
         } else {
             if (!fields[5] || fields[5][0] == '\0') {
-                free(node);
-                size_t tmp = 0;
-                utax_corporate_actions_free_list(&new_head, &tmp);
                 fclose(f);
+                free(parsed_rows);
                 return UTAX_ERR_BAD_FIELD;
             }
             utax_rc t4 = utax__copy_field(r->to_ticker, sizeof(r->to_ticker), fields[5]);
             if (t4 == UTAX_ERR_TRUNCATED) {
-                free(node);
-                size_t tmp = 0;
-                utax_corporate_actions_free_list(&new_head, &tmp);
                 fclose(f);
+                free(parsed_rows);
                 return UTAX_ERR_TRUNCATED;
             }
             if (t4 != UTAX_OK) {
-                free(node);
-                size_t tmp = 0;
-                utax_corporate_actions_free_list(&new_head, &tmp);
                 fclose(f);
+                free(parsed_rows);
                 return UTAX_ERR_PARSE;
             }
         }
@@ -592,46 +575,41 @@ utax_rc utax_corporate_actions_parse_csv_file(const char *path,
         r->action_id = 0;
         r->action_year = 0;
         r->ratio = 0.0;
-
-        node->next = NULL;
-        if (!new_head) new_head = node;
-        else new_tail->next = node;
-        new_tail = node;
+        parsed_count++;
     }
 
     if (ferror(f)) {
-        size_t tmp = 0;
-        utax_corporate_actions_free_list(&new_head, &tmp);
         fclose(f);
+        free(parsed_rows);
         return UTAX_ERR_IO_READ;
     }
 
     fclose(f);
 
-    if (new_head) {
-        if (!*inout_head) *inout_head = new_head;
-        else tail->next = new_head;
-
-        size_t appended = 0;
-        for (utax_corporate_actions_node *p = new_head; p; p = p->next) appended++;
-        *inout_total_elems += appended;
+    if (parsed_count > 0) {
+        size_t base_count = *inout_total_elems;
+        utax_corporate_actions_row *base_rows = *inout_rows;
+        size_t total = base_count + parsed_count;
+        utax_corporate_actions_row *grown = (utax_corporate_actions_row *)realloc(base_rows, total * sizeof(*grown));
+        if (!grown) {
+            free(parsed_rows);
+            return UTAX_ERR_NOMEM;
+        }
+        memcpy(grown + base_count, parsed_rows, parsed_count * sizeof(*parsed_rows));
+        *inout_rows = grown;
+        *inout_total_elems = total;
     }
 
+    free(parsed_rows);
     return UTAX_OK;
 }
 
-void utax_corporate_actions_free_list(utax_corporate_actions_node **inout_head,
+void utax_corporate_actions_free_rows(utax_corporate_actions_row **inout_rows,
                                       size_t *inout_total_elems)
 {
-    if (!inout_head || !inout_total_elems) return;
-
-    utax_corporate_actions_node *p = *inout_head;
-    while (p) {
-        utax_corporate_actions_node *n = p->next;
-        free(p);
-        p = n;
-    }
-    *inout_head = NULL;
+    if (!inout_rows || !inout_total_elems) return;
+    free(*inout_rows);
+    *inout_rows = NULL;
     *inout_total_elems = 0;
 }
 
@@ -710,53 +688,12 @@ utax_rc utax_corporate_actions_insert_many(utax_db_t *db,
     return UTAX_OK;
 }
 
-utax_rc utax_corporate_actions_insert_many_list(utax_db_t *db,
-                                               utax_corporate_actions_node *head,
+utax_rc utax_corporate_actions_insert_many_array(utax_db_t *db,
+                                               utax_corporate_actions_row *rows,
+                                               size_t n,
                                                size_t *out_inserted)
 {
-    if (!db) return UTAX_ERR_INVALID_ARG;
-    if (out_inserted) *out_inserted = 0;
-    if (!head) return UTAX_OK;
-
-    struct utax_db *h = (struct utax_db *)db;
-
-    const char *sql =
-        "INSERT INTO corporate_actions (broker, action_date, action_type, from_ticker, to_ticker, from_qty, to_qty) "
-        "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7);";
-
-    int rc0 = sqlite3_exec(h->db, "BEGIN;", NULL, NULL, NULL);
-    if (rc0 != SQLITE_OK) return utax__set_err_sqlite(h, rc0);
-
-    sqlite3_stmt *st = NULL;
-    utax_rc rc = utax__prep(h, &st, sql);
-    if (rc != UTAX_OK) {
-        (void)sqlite3_exec(h->db, "ROLLBACK;", NULL, NULL, NULL);
-        return rc;
-    }
-
-    size_t i = 0;
-    for (utax_corporate_actions_node *p = head; p; p = p->next) {
-        rc = utax__ca_step_insert_stmt(h, st, &p->row);
-        if (rc != UTAX_OK) {
-            sqlite3_finalize(st);
-            (void)sqlite3_exec(h->db, "ROLLBACK;", NULL, NULL, NULL);
-            if (out_inserted) *out_inserted = i;
-            return rc;
-        }
-        i++;
-    }
-
-    sqlite3_finalize(st);
-
-    int rc1 = sqlite3_exec(h->db, "COMMIT;", NULL, NULL, NULL);
-    if (rc1 != SQLITE_OK) {
-        (void)sqlite3_exec(h->db, "ROLLBACK;", NULL, NULL, NULL);
-        if (out_inserted) *out_inserted = i;
-        return utax__set_err_sqlite(h, rc1);
-    }
-
-    if (out_inserted) *out_inserted = i;
-    return UTAX_OK;
+    return utax_corporate_actions_insert_many(db, rows, n, out_inserted);
 }
 
 utax_rc utax_corporate_actions_insert_many_from_csv_file(utax_db_t *db,
@@ -766,19 +703,19 @@ utax_rc utax_corporate_actions_insert_many_from_csv_file(utax_db_t *db,
     if (!db || !path) return UTAX_ERR_INVALID_ARG;
     if (out_inserted) *out_inserted = 0;
 
-    utax_corporate_actions_node *head = NULL;
+    utax_corporate_actions_row *rows = NULL;
     size_t total = 0;
 
-    utax_rc rc = utax_corporate_actions_parse_csv_file(path, &head, &total);
+    utax_rc rc = utax_corporate_actions_parse_csv_file(path, &rows, &total);
     if (rc != UTAX_OK) {
-        utax_corporate_actions_free_list(&head, &total);
+        utax_corporate_actions_free_rows(&rows, &total);
         return rc;
     }
 
     size_t inserted = 0;
-    rc = utax_corporate_actions_insert_many_list(db, head, &inserted);
+    rc = utax_corporate_actions_insert_many_array(db, rows, total, &inserted);
 
-    utax_corporate_actions_free_list(&head, &total);
+    utax_corporate_actions_free_rows(&rows, &total);
 
     if (out_inserted) *out_inserted = inserted;
     return rc;

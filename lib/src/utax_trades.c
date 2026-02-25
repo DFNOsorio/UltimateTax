@@ -617,24 +617,21 @@ static utax_rc utax__validate_trades_header(char *hdr_line) {
     return UTAX_OK;
 }
 
-/* ---------- parse/free list ---------- */
+/* ---------- parse/free rows ---------- */
 
 utax_rc utax_trades_parse_csv_file(
     const char *path,
-    utax_trades_node **inout_head,
+    utax_trades_row **inout_rows,
     size_t *inout_total_elems
 ) {
-    if (!path || !inout_head || !inout_total_elems) return UTAX_ERR_INVALID_ARG;
+    if (!path || !inout_rows || !inout_total_elems) return UTAX_ERR_INVALID_ARG;
 
     FILE *f = NULL;
     if (!UTAX_FOPEN(f, path, "rb")) return UTAX_ERR_IO_OPEN;
 
-    /* find existing tail */
-    utax_trades_node *tail = *inout_head;
-    while (tail && tail->next) tail = tail->next;
-
-    utax_trades_node *new_head = NULL;
-    utax_trades_node *new_tail = NULL;
+    utax_trades_row *parsed_rows = NULL;
+    size_t parsed_count = 0;
+    size_t parsed_cap = 0;
 
     char line[4096];
 
@@ -666,28 +663,31 @@ utax_rc utax_trades_parse_csv_file(
         int nf = utax__split_csv_simple(s, fields, 16);
         if (nf != 11) {
             fclose(f);
-            utax_trades_free_list(&new_head, &(size_t){0});
             return UTAX_ERR_PARSE;
         }
 
         for (int i = 0; i < nf; ++i) fields[i] = utax__trim_ws(fields[i]);
 
-        utax_trades_node *node = (utax_trades_node *)calloc(1, sizeof(*node));
-        if (!node) {
-            fclose(f);
-            utax_trades_free_list(&new_head, &(size_t){0});
-            return UTAX_ERR_NOMEM;
+        if (parsed_count == parsed_cap) {
+            size_t new_cap = (parsed_cap == 0) ? 8 : (parsed_cap * 2);
+            utax_trades_row *grown = (utax_trades_row *)realloc(parsed_rows, new_cap * sizeof(*grown));
+            if (!grown) {
+                fclose(f);
+                free(parsed_rows);
+                return UTAX_ERR_NOMEM;
+            }
+            parsed_rows = grown;
+            parsed_cap = new_cap;
         }
 
-        utax_trades_row *r = &node->row;
+        utax_trades_row *r = &parsed_rows[parsed_count];
         memset(r, 0, sizeof(*r));
 
         /* DATE+TIME -> trade_datetime */
         utax_rc rcdt = utax__normalize_trade_datetime(fields[0], fields[1], r->trade_datetime);
         if (rcdt != UTAX_OK) {
-            free(node);
             fclose(f);
-            utax_trades_free_list(&new_head, &(size_t){0});
+            free(parsed_rows);
             return rcdt;
         }
 
@@ -700,23 +700,20 @@ utax_rc utax_trades_parse_csv_file(
 
         if (rc1 == UTAX_ERR_TRUNCATED || rc2 == UTAX_ERR_TRUNCATED || rc3 == UTAX_ERR_TRUNCATED ||
             rc4 == UTAX_ERR_TRUNCATED || rc5 == UTAX_ERR_TRUNCATED) {
-            free(node);
             fclose(f);
-            utax_trades_free_list(&new_head, &(size_t){0});
+            free(parsed_rows);
             return UTAX_ERR_TRUNCATED;
         }
         if (rc1 != UTAX_OK || rc2 != UTAX_OK || rc3 != UTAX_OK || rc4 != UTAX_OK || rc5 != UTAX_OK) {
-            free(node);
             fclose(f);
-            utax_trades_free_list(&new_head, &(size_t){0});
+            free(parsed_rows);
             return UTAX_ERR_PARSE;
         }
 
         /* validate TYPE */
         if (!(strcmp(r->type, "BUY") == 0 || strcmp(r->type, "SELL") == 0)) {
-            free(node);
             fclose(f);
-            utax_trades_free_list(&new_head, &(size_t){0});
+            free(parsed_rows);
             return UTAX_ERR_BAD_FIELD;
         }
 
@@ -727,163 +724,81 @@ utax_rc utax_trades_parse_csv_file(
         utax_rc rr = utax__parse_double_strict(fields[10], &r->conversion_rate_eur);
 
         if (rq == UTAX_ERR_OVERFLOW || rp == UTAX_ERR_OVERFLOW || rc == UTAX_ERR_OVERFLOW || rr == UTAX_ERR_OVERFLOW) {
-            free(node);
             fclose(f);
-            utax_trades_free_list(&new_head, &(size_t){0});
+            free(parsed_rows);
             return UTAX_ERR_OVERFLOW;
         }
         if (rq != UTAX_OK || rp != UTAX_OK || rc != UTAX_OK || rr != UTAX_OK) {
-            free(node);
             fclose(f);
-            utax_trades_free_list(&new_head, &(size_t){0});
+            free(parsed_rows);
             return UTAX_ERR_BAD_FIELD;
         }
 
         /* generated in DB */
         r->trade_year = 0;
         r->id = 0;
-
-        node->next = NULL;
-        if (!new_head) new_head = node;
-        else new_tail->next = node;
-        new_tail = node;
+        parsed_count++;
     }
 
     if (ferror(f)) {
         fclose(f);
-        utax_trades_free_list(&new_head, &(size_t){0});
+        free(parsed_rows);
         return UTAX_ERR_IO_READ;
     }
 
     fclose(f);
 
-    /* attach */
-    if (new_head) {
-        if (!*inout_head) *inout_head = new_head;
-        else tail->next = new_head;
+    if (parsed_count > 0) {
+        size_t base_count = *inout_total_elems;
+        utax_trades_row *base_rows = *inout_rows;
+        size_t total = base_count + parsed_count;
 
-        size_t appended = 0;
-        for (utax_trades_node *p = new_head; p; p = p->next) appended++;
-        *inout_total_elems += appended;
+        utax_trades_row *grown = (utax_trades_row *)realloc(base_rows, total * sizeof(*grown));
+        if (!grown) {
+            free(parsed_rows);
+            return UTAX_ERR_NOMEM;
+        }
+
+        memcpy(grown + base_count, parsed_rows, parsed_count * sizeof(*parsed_rows));
+        *inout_rows = grown;
+        *inout_total_elems = total;
     }
+
+    free(parsed_rows);
 
     return UTAX_OK;
 }
 
-void utax_trades_free_list(utax_trades_node **inout_head, size_t *inout_total_elems) {
-    if (!inout_head || !inout_total_elems) return;
-
-    utax_trades_node *p = *inout_head;
-    while (p) {
-        utax_trades_node *n = p->next;
-        free(p);
-        p = n;
-    }
-
-    *inout_head = NULL;
+void utax_trades_free_rows(utax_trades_row **inout_rows, size_t *inout_total_elems) {
+    if (!inout_rows || !inout_total_elems) return;
+    free(*inout_rows);
+    *inout_rows = NULL;
     *inout_total_elems = 0;
 }
 
-/* ---------- batch insert list + file ---------- */
+/* ---------- batch insert rows + file ---------- */
 
-utax_rc utax_trades_insert_many_list(utax_db_t *db, utax_trades_node *head, size_t *out_inserted) {
-    if (!db) return UTAX_ERR_INVALID_ARG;
-    if (out_inserted) *out_inserted = 0;
-    if (!head) return UTAX_OK;
-
-    struct utax_db *h = (struct utax_db *)db;
-
-    const char *sql =
-        "INSERT INTO trades ("
-        " broker, ticker, trade_datetime, type, "
-        " quantity, price_per_share, commission, "
-        " country, currency, conversion_rate_eur"
-        ") VALUES ("
-        " COALESCE(NULLIF(?1,''),'IKBR'),"
-        " ?2,"
-        " ?3,"
-        " COALESCE(NULLIF(?4,''),'BUY'),"
-        " ?5, ?6, ?7,"
-        " COALESCE(NULLIF(?8,''),'US'),"
-        " COALESCE(NULLIF(?9,''),'USD'),"
-        " ?10"
-        ");";
-
-    int rc0 = sqlite3_exec(h->db, "BEGIN;", NULL, NULL, NULL);
-    if (rc0 != SQLITE_OK) return utax__set_err_sqlite(h, rc0);
-
-    sqlite3_stmt *st = NULL;
-    utax_rc rc = utax__prep(h, &st, sql);
-    if (rc != UTAX_OK) {
-        (void)sqlite3_exec(h->db, "ROLLBACK;", NULL, NULL, NULL);
-        return rc;
-    }
-
-    size_t i = 0;
-    for (utax_trades_node *p = head; p; p = p->next) {
-        utax_trades_row *r = &p->row;
-
-        sqlite3_clear_bindings(st);
-        sqlite3_reset(st);
-
-        double commission = (r->commission >= 0.0) ? r->commission : 0.0;
-        double conv = (r->conversion_rate_eur > 0.0) ? r->conversion_rate_eur : 1.0;
-
-        (void)utax__bind_text(st, 1, r->broker);
-        (void)utax__bind_text(st, 2, r->ticker);
-        (void)utax__bind_text(st, 3, r->trade_datetime);
-        (void)utax__bind_text(st, 4, r->type);
-
-        sqlite3_bind_double(st, 5, r->quantity);
-        sqlite3_bind_double(st, 6, r->price_per_share);
-        sqlite3_bind_double(st, 7, commission);
-
-        (void)utax__bind_text(st, 8, r->country);
-        (void)utax__bind_text(st, 9, r->currency);
-        sqlite3_bind_double(st, 10, conv);
-
-        int s = sqlite3_step(st);
-        if (s != SQLITE_DONE) {
-            sqlite3_finalize(st);
-            (void)sqlite3_exec(h->db, "ROLLBACK;", NULL, NULL, NULL);
-            if (out_inserted) *out_inserted = i;
-            return utax__set_err_sqlite(h, s);
-        }
-
-        r->id = (long long)sqlite3_last_insert_rowid(h->db);
-        i++;
-    }
-
-    sqlite3_finalize(st);
-
-    int rc1 = sqlite3_exec(h->db, "COMMIT;", NULL, NULL, NULL);
-    if (rc1 != SQLITE_OK) {
-        (void)sqlite3_exec(h->db, "ROLLBACK;", NULL, NULL, NULL);
-        if (out_inserted) *out_inserted = i;
-        return utax__set_err_sqlite(h, rc1);
-    }
-
-    if (out_inserted) *out_inserted = i;
-    return UTAX_OK;
+utax_rc utax_trades_insert_many_array(utax_db_t *db, utax_trades_row *rows, size_t n, size_t *out_inserted) {
+    return utax_trades_insert_many(db, rows, n, out_inserted);
 }
 
 utax_rc utax_trades_insert_many_from_csv_file(utax_db_t *db, const char *path, size_t *out_inserted) {
     if (!db || !path) return UTAX_ERR_INVALID_ARG;
     if (out_inserted) *out_inserted = 0;
 
-    utax_trades_node *head = NULL;
+    utax_trades_row *rows = NULL;
     size_t total = 0;
 
-    utax_rc rc = utax_trades_parse_csv_file(path, &head, &total);
+    utax_rc rc = utax_trades_parse_csv_file(path, &rows, &total);
     if (rc != UTAX_OK) {
-        utax_trades_free_list(&head, &total);
+        utax_trades_free_rows(&rows, &total);
         return rc;
     }
 
     size_t inserted = 0;
-    rc = utax_trades_insert_many_list(db, head, &inserted);
+    rc = utax_trades_insert_many_array(db, rows, total, &inserted);
 
-    utax_trades_free_list(&head, &total);
+    utax_trades_free_rows(&rows, &total);
 
     if (out_inserted) *out_inserted = inserted;
     return rc;

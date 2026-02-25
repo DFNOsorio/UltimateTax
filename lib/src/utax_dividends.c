@@ -531,20 +531,17 @@ static utax_rc utax__validate_header(char *hdr_line) {
 
 utax_rc utax_dividends_parse_csv_file(
     const char *path,
-    utax_dividends_node **inout_head,
+    utax_dividends_row **inout_rows,
     size_t *inout_total_elems
 ) {
-    if (!path || !inout_head || !inout_total_elems) return UTAX_ERR_INVALID_ARG;
+    if (!path || !inout_rows || !inout_total_elems) return UTAX_ERR_INVALID_ARG;
 
     FILE *f = NULL;
     if (!UTAX_FOPEN(f, path, "rb")) return UTAX_ERR_IO_OPEN;
 
-    /* Find tail of existing list for append */
-    utax_dividends_node *tail = *inout_head;
-    while (tail && tail->next) tail = tail->next;
-
-    utax_dividends_node *new_head = NULL;
-    utax_dividends_node *new_tail = NULL;
+    utax_dividends_row *parsed_rows = NULL;
+    size_t parsed_count = 0;
+    size_t parsed_cap = 0;
 
     char line[4096];
 
@@ -577,26 +574,34 @@ utax_rc utax_dividends_parse_csv_file(
         int nf = utax__split_csv_simple(s, fields, 16);
         if (nf != 11) {
             fclose(f);
-            utax_dividends_free_list(&new_head, &(size_t){0});
+            free(parsed_rows);
             return UTAX_ERR_PARSE;
         }
 
         for (int i = 0; i < nf; ++i) fields[i] = utax__trim_ws(fields[i]);
 
-        /* allocate node */
-        utax_dividends_node *node = (utax_dividends_node *)calloc(1, sizeof(*node));
-        if (!node) {
-            fclose(f);
-            utax_dividends_free_list(&new_head, &(size_t){0});
-            return UTAX_ERR_NOMEM;
+        if (parsed_count == parsed_cap) {
+            size_t new_cap = (parsed_cap == 0) ? 8 : (parsed_cap * 2);
+            utax_dividends_row *grown = (utax_dividends_row *)realloc(parsed_rows, new_cap * sizeof(*grown));
+            if (!grown) {
+                fclose(f);
+                free(parsed_rows);
+                return UTAX_ERR_NOMEM;
+            }
+            parsed_rows = grown;
+            parsed_cap = new_cap;
         }
 
-        utax_dividends_row *r = &node->row;
+        utax_dividends_row *r = &parsed_rows[parsed_count];
         memset(r, 0, sizeof(*r));
 
         /* TIME -> dividend_dt */
         utax_rc rc_dt = utax__normalize_time(fields[0], r->dividend_dt);
-        if (rc_dt != UTAX_OK) { free(node); fclose(f); utax_dividends_free_list(&new_head, &(size_t){0}); return rc_dt; }
+        if (rc_dt != UTAX_OK) {
+            fclose(f);
+            free(parsed_rows);
+            return rc_dt;
+        }
 
         /* strings (BROKER, TICKER, COUNTRY, CURRENCY) */
         utax_rc rc1 = utax__copy_field(r->broker, sizeof(r->broker), fields[1]);
@@ -605,15 +610,13 @@ utax_rc utax_dividends_parse_csv_file(
         utax_rc rc4 = utax__copy_field(r->currency, sizeof(r->currency), fields[9]);
 
         if (rc1 == UTAX_ERR_TRUNCATED || rc2 == UTAX_ERR_TRUNCATED || rc3 == UTAX_ERR_TRUNCATED || rc4 == UTAX_ERR_TRUNCATED) {
-            free(node);
             fclose(f);
-            utax_dividends_free_list(&new_head, &(size_t){0});
+            free(parsed_rows);
             return UTAX_ERR_TRUNCATED;
         }
         if (rc1 != UTAX_OK || rc2 != UTAX_OK || rc3 != UTAX_OK || rc4 != UTAX_OK) {
-            free(node);
             fclose(f);
-            utax_dividends_free_list(&new_head, &(size_t){0});
+            free(parsed_rows);
             return UTAX_ERR_PARSE;
         }
 
@@ -627,144 +630,73 @@ utax_rc utax_dividends_parse_csv_file(
             utax_rc rcx = UTAX_ERR_BAD_FIELD;
             if (rc_ps == UTAX_ERR_OVERFLOW || rc_am == UTAX_ERR_OVERFLOW || rc_tx == UTAX_ERR_OVERFLOW || rc_cr == UTAX_ERR_OVERFLOW)
                 rcx = UTAX_ERR_OVERFLOW;
-            free(node);
             fclose(f);
-            utax_dividends_free_list(&new_head, &(size_t){0});
+            free(parsed_rows);
             return rcx;
         }
 
         /* generated in DB */
         r->dividend_year = 0;
         r->dividend_id = 0;
-
-        node->next = NULL;
-
-        if (!new_head) new_head = node;
-        else new_tail->next = node;
-        new_tail = node;
+        parsed_count++;
     }
 
     if (ferror(f)) {
         fclose(f);
-        utax_dividends_free_list(&new_head, &(size_t){0});
+        free(parsed_rows);
         return UTAX_ERR_IO_READ;
     }
 
     fclose(f);
 
-    /* attach to existing list */
-    if (new_head) {
-        if (!*inout_head) *inout_head = new_head;
-        else tail->next = new_head;
-
-        size_t appended = 0;
-        for (utax_dividends_node *p = new_head; p; p = p->next) appended++;
-        *inout_total_elems += appended;
+    if (parsed_count > 0) {
+        size_t base_count = *inout_total_elems;
+        utax_dividends_row *base_rows = *inout_rows;
+        size_t total = base_count + parsed_count;
+        utax_dividends_row *grown = (utax_dividends_row *)realloc(base_rows, total * sizeof(*grown));
+        if (!grown) {
+            free(parsed_rows);
+            return UTAX_ERR_NOMEM;
+        }
+        memcpy(grown + base_count, parsed_rows, parsed_count * sizeof(*parsed_rows));
+        *inout_rows = grown;
+        *inout_total_elems = total;
     }
 
+    free(parsed_rows);
     return UTAX_OK;
 }
 
-void utax_dividends_free_list(utax_dividends_node **inout_head, size_t *inout_total_elems) {
-    if (!inout_head || !inout_total_elems) return;
-
-    utax_dividends_node *p = *inout_head;
-    while (p) {
-        utax_dividends_node *n = p->next;
-        free(p);
-        p = n;
-    }
-    *inout_head = NULL;
+void utax_dividends_free_rows(utax_dividends_row **inout_rows, size_t *inout_total_elems) {
+    if (!inout_rows || !inout_total_elems) return;
+    free(*inout_rows);
+    *inout_rows = NULL;
     *inout_total_elems = 0;
 }
 
-/* --------- public: batch inserters (list + file) --------- */
+/* --------- public: batch inserters (array + file) --------- */
 
-utax_rc utax_dividends_insert_many_list(utax_db_t *db, utax_dividends_node *head, size_t *out_inserted) {
-    if (!db) return UTAX_ERR_INVALID_ARG;
-    if (out_inserted) *out_inserted = 0;
-    if (!head) return UTAX_OK;
-
-    struct utax_db *h = (struct utax_db *)db;
-
-    const char *sql =
-        "INSERT INTO dividends ("
-        " broker, ticker, country, dividend_dt, "
-        " per_share, total_amount, tax, "
-        " currency, conversion_rate_eur"
-        ") VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9);";
-
-    int rc0 = sqlite3_exec(h->db, "BEGIN;", NULL, NULL, NULL);
-    if (rc0 != SQLITE_OK) return utax__set_err_sqlite(h, rc0);
-
-    sqlite3_stmt *st = NULL;
-    utax_rc rc = utax__prep(h, &st, sql);
-    if (rc != UTAX_OK) {
-        (void)sqlite3_exec(h->db, "ROLLBACK;", NULL, NULL, NULL);
-        return rc;
-    }
-
-    size_t i = 0;
-    for (utax_dividends_node *p = head; p; p = p->next) {
-        utax_dividends_row *r = &p->row;
-
-        sqlite3_clear_bindings(st);
-        sqlite3_reset(st);
-
-        (void)utax__bind_text(st, 1, r->broker);
-        (void)utax__bind_text(st, 2, r->ticker);
-        (void)utax__bind_text(st, 3, r->country);
-        (void)utax__bind_text(st, 4, r->dividend_dt);
-
-        sqlite3_bind_double(st, 5, r->per_share);
-        sqlite3_bind_double(st, 6, r->total_amount);
-        sqlite3_bind_double(st, 7, r->tax);
-
-        (void)utax__bind_text(st, 8, r->currency);
-        sqlite3_bind_double(st, 9, r->conversion_rate_eur);
-
-        int s = sqlite3_step(st);
-        if (s != SQLITE_DONE) {
-            sqlite3_finalize(st);
-            (void)sqlite3_exec(h->db, "ROLLBACK;", NULL, NULL, NULL);
-            if (out_inserted) *out_inserted = i;
-            return utax__set_err_sqlite(h, s);
-        }
-
-        r->dividend_id = (long long)sqlite3_last_insert_rowid(h->db);
-        i++;
-    }
-
-    sqlite3_finalize(st);
-
-    int rc1 = sqlite3_exec(h->db, "COMMIT;", NULL, NULL, NULL);
-    if (rc1 != SQLITE_OK) {
-        (void)sqlite3_exec(h->db, "ROLLBACK;", NULL, NULL, NULL);
-        if (out_inserted) *out_inserted = i;
-        return utax__set_err_sqlite(h, rc1);
-    }
-
-    if (out_inserted) *out_inserted = i;
-    return UTAX_OK;
+utax_rc utax_dividends_insert_many_array(utax_db_t *db, utax_dividends_row *rows, size_t n, size_t *out_inserted) {
+    return utax_dividends_insert_many(db, rows, n, out_inserted);
 }
 
 utax_rc utax_dividends_insert_many_from_csv_file(utax_db_t *db, const char *path, size_t *out_inserted) {
     if (!db || !path) return UTAX_ERR_INVALID_ARG;
     if (out_inserted) *out_inserted = 0;
 
-    utax_dividends_node *head = NULL;
+    utax_dividends_row *rows = NULL;
     size_t total = 0;
 
-    utax_rc rc = utax_dividends_parse_csv_file(path, &head, &total);
+    utax_rc rc = utax_dividends_parse_csv_file(path, &rows, &total);
     if (rc != UTAX_OK) {
-        utax_dividends_free_list(&head, &total);
+        utax_dividends_free_rows(&rows, &total);
         return rc;
     }
 
     size_t inserted = 0;
-    rc = utax_dividends_insert_many_list(db, head, &inserted);
+    rc = utax_dividends_insert_many_array(db, rows, total, &inserted);
 
-    utax_dividends_free_list(&head, &total);
+    utax_dividends_free_rows(&rows, &total);
 
     if (out_inserted) *out_inserted = inserted;
     return rc;

@@ -30,18 +30,13 @@ typedef struct utax_dividends_filter {
     int offset;
 } utax_dividends_filter;
 
-typedef struct utax_dividends_node {
-    utax_dividends_row row;
-    struct utax_dividends_node *next;
-} utax_dividends_node;
-
 UTAX_API utax_rc utax_dividends_parse_csv_file(
     const char *path,
-    utax_dividends_node **inout_head,
+    utax_dividends_row **inout_rows,
     size_t *inout_total_elems
 );
 
-UTAX_API void utax_dividends_free_list(utax_dividends_node **inout_head, size_t *inout_total_elems);
+UTAX_API void utax_dividends_free_rows(utax_dividends_row **inout_rows, size_t *inout_total_elems);
 
 /* CRUD */
 UTAX_API utax_rc utax_dividends_insert(utax_db_t *db, const utax_dividends_row *row, long long *out_id);
@@ -49,9 +44,10 @@ UTAX_API utax_rc utax_dividends_insert_many(utax_db_t *db,
                                             utax_dividends_row *rows,
                                             size_t n,
                                             size_t *out_inserted);
-UTAX_API utax_rc utax_dividends_insert_many_list(
+UTAX_API utax_rc utax_dividends_insert_many_array(
     utax_db_t *db,
-    utax_dividends_node *head,
+    utax_dividends_row *rows,
+    size_t n,
     size_t *out_inserted
 );
 UTAX_API utax_rc utax_dividends_insert_many_from_csv_file(

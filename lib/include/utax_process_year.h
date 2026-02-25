@@ -7,21 +7,16 @@
 extern "C" {
 #endif
 
-typedef struct utax_process_year_realized_node {
-    utax_fifo_realized_row row;
-    struct utax_process_year_realized_node *next;
-} utax_process_year_realized_node;
-
 UTAX_API utax_rc process_year_trades(
     utax_db_t *db,
     uint16_t year,
-    utax_process_year_realized_node **inout_head,
-    size_t *inout_total_elems
+    utax_fifo_realized_row **out_rows,
+    size_t *out_count
 );
 
-UTAX_API void process_year_free_realized_list(
-    utax_process_year_realized_node **inout_head,
-    size_t *inout_total_elems
+UTAX_API void process_year_free_realized_rows(
+    utax_fifo_realized_row **inout_rows,
+    size_t *inout_count
 );
 
 typedef struct utax_dividends_country_total_row {
@@ -31,21 +26,16 @@ typedef struct utax_dividends_country_total_row {
     double total_eur;
 } utax_dividends_country_total_row;
 
-typedef struct utax_dividends_country_total_node {
-    utax_dividends_country_total_row row;
-    struct utax_dividends_country_total_node *next;
-} utax_dividends_country_total_node;
-
 UTAX_API utax_rc process_year_dividends_country_totals(
     utax_db_t *db,
     uint16_t year,
-    utax_dividends_country_total_node **inout_head,
-    size_t *inout_total_elems
+    utax_dividends_country_total_row **out_rows,
+    size_t *out_count
 );
 
-UTAX_API void process_year_free_dividends_country_total_list(
-    utax_dividends_country_total_node **inout_head,
-    size_t *inout_total_elems
+UTAX_API void process_year_free_dividends_country_total_rows(
+    utax_dividends_country_total_row **inout_rows,
+    size_t *inout_count
 );
 
 #ifdef __cplusplus

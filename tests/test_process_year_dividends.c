@@ -44,11 +44,12 @@ static void make_temp_db_path(char *out, size_t out_sz) {
 }
 
 static const utax_dividends_country_total_row *find_country(
-    const utax_dividends_country_total_node *head,
+    const utax_dividends_country_total_row *rows,
+    size_t n,
     const char *country
 ) {
-    for (const utax_dividends_country_total_node *p = head; p; p = p->next) {
-        if (strcmp(p->row.country, country) == 0) return &p->row;
+    for (size_t i = 0; i < n; ++i) {
+        if (strcmp(rows[i].country, country) == 0) return &rows[i];
     }
     return NULL;
 }
@@ -152,7 +153,7 @@ int main(int argc, char **argv) {
         assert(id > 0);
     }
 
-    utax_dividends_country_total_node *head = NULL;
+    utax_dividends_country_total_row *rows_out = NULL;
     size_t total = 0;
 
     size_t no_export_total = 999;
@@ -160,13 +161,13 @@ int main(int argc, char **argv) {
     assert(rc == UTAX_OK);
     assert(no_export_total == 999);
 
-    rc = process_year_dividends_country_totals(db, 2025, &head, &total);
+    rc = process_year_dividends_country_totals(db, 2025, &rows_out, &total);
     assert(rc == UTAX_OK);
     assert(total == 3);
 
-    const utax_dividends_country_total_row *us = find_country(head, "US");
-    const utax_dividends_country_total_row *ie = find_country(head, "IE");
-    const utax_dividends_country_total_row *br = find_country(head, "BR");
+    const utax_dividends_country_total_row *us = find_country(rows_out, total, "US");
+    const utax_dividends_country_total_row *ie = find_country(rows_out, total, "IE");
+    const utax_dividends_country_total_row *br = find_country(rows_out, total, "BR");
 
     assert(us && ie && br);
 
@@ -182,20 +183,18 @@ int main(int argc, char **argv) {
     assert(UTAX_NEAR(br->taxes_eur, 2.0));
     assert(UTAX_NEAR(br->total_eur, 18.0));
 
-    rc = process_year_dividends_country_totals(db, 2024, &head, &total);
+    process_year_free_dividends_country_total_rows(&rows_out, &total);
+
+    rc = process_year_dividends_country_totals(db, 2024, &rows_out, &total);
     assert(rc == UTAX_OK);
-    assert(total == 4);
+    assert(total == 1);
+    assert(strcmp(rows_out[0].country, "US") == 0);
+    assert(UTAX_NEAR(rows_out[0].gross_amount_eur, 999.0));
+    assert(UTAX_NEAR(rows_out[0].taxes_eur, 99.0));
+    assert(UTAX_NEAR(rows_out[0].total_eur, 900.0));
 
-    const utax_dividends_country_total_node *last = head;
-    while (last && last->next) last = last->next;
-    assert(last != NULL);
-    assert(strcmp(last->row.country, "US") == 0);
-    assert(UTAX_NEAR(last->row.gross_amount_eur, 999.0));
-    assert(UTAX_NEAR(last->row.taxes_eur, 99.0));
-    assert(UTAX_NEAR(last->row.total_eur, 900.0));
-
-    process_year_free_dividends_country_total_list(&head, &total);
-    assert(head == NULL);
+    process_year_free_dividends_country_total_rows(&rows_out, &total);
+    assert(rows_out == NULL);
     assert(total == 0);
 
     rc = utax_db_close(db);

@@ -102,34 +102,33 @@ int main(int argc, char **argv) {
         "2019-12-19,REVO,GM,3,0.38,1.14,0.17,15,US,USD,1.1117\n";
     write_text_file(csv1, txt1);
 
-    /* parse -> list */
-    utax_dividends_node *head = NULL;
+    /* parse -> dynamic array */
+    utax_dividends_row *rows = NULL;
     size_t total = 0;
 
-    rc = utax_dividends_parse_csv_file(csv1, &head, &total);
+    rc = utax_dividends_parse_csv_file(csv1, &rows, &total);
     assert(rc == UTAX_OK);
     assert(total == 1);
-    assert(head != NULL);
-    assert(head->next == NULL);
+    assert(rows != NULL);
 
     /* validate parsed row */
-    assert(strcmp(head->row.broker, "REVO") == 0);
-    assert(strcmp(head->row.ticker, "GM") == 0);
-    assert(strcmp(head->row.country, "US") == 0);
-    assert(strcmp(head->row.currency, "USD") == 0);
-    assert(strcmp(head->row.dividend_dt, "2019-12-19 00:00") == 0);
-    assert(head->row.per_share == 0.38);
-    assert(head->row.total_amount == 1.14);
-    assert(head->row.tax == 0.17);
-    assert(head->row.conversion_rate_eur > 1.0);
+    assert(strcmp(rows[0].broker, "REVO") == 0);
+    assert(strcmp(rows[0].ticker, "GM") == 0);
+    assert(strcmp(rows[0].country, "US") == 0);
+    assert(strcmp(rows[0].currency, "USD") == 0);
+    assert(strcmp(rows[0].dividend_dt, "2019-12-19 00:00") == 0);
+    assert(rows[0].per_share == 0.38);
+    assert(rows[0].total_amount == 1.14);
+    assert(rows[0].tax == 0.17);
+    assert(rows[0].conversion_rate_eur > 1.0);
 
-    /* insert list (batch) */
+    /* insert array (batch) */
     size_t inserted = 0;
-    rc = utax_dividends_insert_many_list(db, head, &inserted);
-    if (rc != UTAX_OK) fprintf(stderr, "insert_many_list failed: %s\n", utax_db_last_error(db));
+    rc = utax_dividends_insert_many_array(db, rows, total, &inserted);
+    if (rc != UTAX_OK) fprintf(stderr, "insert_many_array failed: %s\n", utax_db_last_error(db));
     assert(rc == UTAX_OK);
     assert(inserted == 1);
-    assert(head->row.dividend_id > 0);
+    assert(rows[0].dividend_id > 0);
 
     /* verify DB */
     long long ctot = -1;
@@ -150,9 +149,9 @@ int main(int argc, char **argv) {
     assert(out_n == 1);
     assert(out[0].dividend_year == year_from_dt(out[0].dividend_dt));
 
-    /* free list */
-    utax_dividends_free_list(&head, &total);
-    assert(head == NULL);
+    /* free rows */
+    utax_dividends_free_rows(&rows, &total);
+    assert(rows == NULL);
     assert(total == 0);
 
     /* temp CSV #2 (two rows) */
@@ -184,6 +183,6 @@ int main(int argc, char **argv) {
     remove(csv1);
     remove(csv2);
 
-    printf("All ultimateTax dividends CSV/list tests passed.\n");
+    printf("All ultimateTax dividends CSV/array tests passed.\n");
     return 0;
 }

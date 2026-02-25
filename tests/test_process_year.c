@@ -157,21 +157,18 @@ int main(int argc, char **argv) {
     assert(rc == UTAX_OK);
     assert(no_export_total == 1234);
 
-    utax_process_year_realized_node *export_head = NULL;
+    utax_fifo_realized_row *export_rows = NULL;
     size_t export_total = 0;
-    rc = process_year_trades(db, 2025, &export_head, &export_total);
+    rc = process_year_trades(db, 2025, &export_rows, &export_total);
     assert(rc == UTAX_OK);
     assert(export_total == 2);
 
     {
-        const utax_process_year_realized_node *n = export_head;
-        assert(n != NULL);
-        assert(strcmp(n->row.ticker, "ABC") == 0);
-        assert(n->row.match_seq == 1);
-        n = n->next;
-        assert(n != NULL);
-        assert(strcmp(n->row.ticker, "ABC") == 0);
-        assert(n->row.match_seq == 2);
+        assert(export_rows != NULL);
+        assert(strcmp(export_rows[0].ticker, "ABC") == 0);
+        assert(export_rows[0].match_seq == 1);
+        assert(strcmp(export_rows[1].ticker, "ABC") == 0);
+        assert(export_rows[1].match_seq == 2);
     }
 
     {
@@ -288,8 +285,8 @@ int main(int argc, char **argv) {
         assert(cnt == 0);
     }
 
-    process_year_free_realized_list(&export_head, &export_total);
-    assert(export_head == NULL);
+    process_year_free_realized_rows(&export_rows, &export_total);
+    assert(export_rows == NULL);
     assert(export_total == 0);
 
     rc = utax_db_close(db);

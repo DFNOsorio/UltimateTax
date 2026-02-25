@@ -28,19 +28,14 @@ typedef struct utax_trades_filter {
     int offset;
 } utax_trades_filter;
 
-typedef struct utax_trades_node {
-    utax_trades_row row;
-    struct utax_trades_node *next;
-} utax_trades_node;
-
 UTAX_API utax_rc utax_trades_parse_csv_file(
     const char *path,
-    utax_trades_node **inout_head,
+    utax_trades_row **inout_rows,
     size_t *inout_total_elems
 );
 
-UTAX_API void utax_trades_free_list(
-    utax_trades_node **inout_head,
+UTAX_API void utax_trades_free_rows(
+    utax_trades_row **inout_rows,
     size_t *inout_total_elems
 );
 
@@ -50,9 +45,10 @@ UTAX_API utax_rc utax_trades_insert_many(utax_db_t *db,
                                          utax_trades_row *rows,
                                          size_t n,
                                          size_t *out_inserted);
-UTAX_API utax_rc utax_trades_insert_many_list(
+UTAX_API utax_rc utax_trades_insert_many_array(
     utax_db_t *db,
-    utax_trades_node *head,
+    utax_trades_row *rows,
+    size_t n,
     size_t *out_inserted
 );
 UTAX_API utax_rc utax_trades_insert_many_from_csv_file(
