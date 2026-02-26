@@ -14,7 +14,7 @@ enum {
     UTAX_DT_MAX             = 17,  /* "YYYY-MM-DD HH:MM" + '\0' */
     UTAX_TYPE_MAX           = 5,   /* "BUY"/"SELL" + '\0' */
     UTAX_TICKER_MAX         = 16,  /* e.g., "BRK.B", "RDSA.AS", etc. */
-    UTAX_COUNTRY_MAX        = 4,   /* "US" + '\0' (room for padding) */
+    UTAX_COUNTRY_MAX        = 16,  /* country/market code, supports values longer than 2 chars */
     UTAX_CCY_MAX            = 4,   /* "USD" + '\0' */
     UTAX_ACTION_TYPE_MAX    = 16   /* longest is "CONVERSION" (10) + '\0' */
 };

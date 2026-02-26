@@ -177,6 +177,7 @@ int main(int argc, char **argv) {
         assert(strcmp(rows[0].ticker, "WFC") == 0);
         assert(strcmp(rows[0].buy_datetime, "2022-12-01 10:00") == 0);
         assert(UTAX_NEAR(rows[0].qty_matched, 10.0));
+        assert(UTAX_NEAR(rows[0].costs_eur, 3.0)); /* buy-side + sell-side commissions are cumulative */
     }
 
     {
@@ -238,7 +239,7 @@ int main(int argc, char **argv) {
         assert(UTAX_NEAR(rows[0].qty_matched, 8.0));
         assert(UTAX_NEAR(rows[0].acquisition_value_eur, 400.0));
         assert(UTAX_NEAR(rows[0].sale_value_eur, 1200.0));
-        assert(UTAX_NEAR(rows[0].costs_eur, 10.0));
+        assert(UTAX_NEAR(rows[0].costs_eur, 2.0));
         assert(strcmp(rows[0].buy_datetime, "2024-01-10 10:00") == 0);
 
         assert(strcmp(rows[1].ticker, "ABC") == 0);
@@ -246,7 +247,7 @@ int main(int argc, char **argv) {
         assert(UTAX_NEAR(rows[1].qty_matched, 4.0));
         assert(UTAX_NEAR(rows[1].acquisition_value_eur, 240.0));
         assert(UTAX_NEAR(rows[1].sale_value_eur, 600.0));
-        assert(UTAX_NEAR(rows[1].costs_eur, 6.0));
+        assert(UTAX_NEAR(rows[1].costs_eur, 12.0));
         assert(strcmp(rows[1].buy_datetime, "2025-02-01 10:00") == 0);
     }
 
@@ -274,7 +275,7 @@ int main(int argc, char **argv) {
         assert(strcmp(rows[0].acq_datetime, "2025-02-01 10:00") == 0);
         assert(UTAX_NEAR(rows[0].qty_remaining, 6.0));
         assert(UTAX_NEAR(rows[0].cost_per_share_eur, 60.0));
-        assert(UTAX_NEAR(rows[0].acq_commission_eur, 3.0));
+        assert(UTAX_NEAR(rows[0].acq_commission_eur, 5.0));
 
         assert(strcmp(rows[1].ticker, "ABC") == 0);
         assert(strcmp(rows[1].acq_datetime, "2025-04-01 10:00") == 0);
