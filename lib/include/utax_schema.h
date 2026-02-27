@@ -1,5 +1,9 @@
 
 #pragma once
+/**
+ * @file utax_schema.h
+ * @brief Schema constants, row structures, and schema management APIs.
+ */
 #include "utax_db.h"
 
 #ifdef __cplusplus
@@ -9,6 +13,7 @@ extern "C" {
 /* --------------------------------------------------------------------------
    Fixed-size string field limits (including null terminator space)
    -------------------------------------------------------------------------- */
+/** @brief Fixed-size limits for schema string fields (including null terminator). */
 enum {
     UTAX_BROKER_MAX         = 16,  /* "IKBR", "REVOLUT", etc. */
     UTAX_DT_MAX             = 17,  /* "YYYY-MM-DD HH:MM" + '\0' */
@@ -19,6 +24,7 @@ enum {
     UTAX_ACTION_TYPE_MAX    = 16   /* longest is "CONVERSION" (10) + '\0' */
 };
 
+/** @brief Row model for the `trades` table. */
 typedef struct utax_trades_row {
     long long id;
 
@@ -37,6 +43,7 @@ typedef struct utax_trades_row {
     char currency[UTAX_CCY_MAX];
 } utax_trades_row;
 
+/** @brief Row model for FIFO snapshot lots. */
 typedef struct utax_fifo_snapshot_row {
     long long lot_id;
     long long acq_trade_id;
@@ -53,6 +60,7 @@ typedef struct utax_fifo_snapshot_row {
     char country[UTAX_COUNTRY_MAX];
 } utax_fifo_snapshot_row;
 
+/** @brief Row model for realized FIFO matches. */
 typedef struct utax_fifo_realized_row {
     long long realized_id;
     long long sell_trade_id;
@@ -73,11 +81,13 @@ typedef struct utax_fifo_realized_row {
     char buy_datetime[UTAX_DT_MAX];
 } utax_fifo_realized_row;
 
+/** @brief Link row between FIFO snapshot lots and corporate actions. */
 typedef struct utax_fifo_snapshot_action_applied_row {
     long long lot_id;
     long long action_id;
 } utax_fifo_snapshot_action_applied_row;
 
+/** @brief Row model for the `dividends` table. */
 typedef struct utax_dividends_row {
     long long dividend_id;
 
@@ -97,6 +107,26 @@ typedef struct utax_dividends_row {
     char currency[UTAX_CCY_MAX];
 } utax_dividends_row;
 
+/** @brief Row model for the `options_operations` table. */
+typedef struct utax_options_row {
+    long long option_id;
+
+    int amount_x100;
+    int bought_year;
+
+    double per_contract;
+    double tax;
+    double conversion_rate_eur;
+
+    char broker[UTAX_BROKER_MAX];
+    char bought_dt[UTAX_DT_MAX];
+    char expiration_dt[UTAX_DT_MAX];
+    char ticker[UTAX_TICKER_MAX];
+    char country[UTAX_COUNTRY_MAX];
+    char currency[UTAX_CCY_MAX];
+} utax_options_row;
+
+/** @brief Row model for the `corporate_actions` table. */
 typedef struct utax_corporate_actions_row {
     long long action_id;
 
@@ -115,13 +145,18 @@ typedef struct utax_corporate_actions_row {
     char to_ticker[UTAX_TICKER_MAX];                 /* "" when NULL in DB (SPLIT) */
 } utax_corporate_actions_row;
 
+/** @brief Apply schema SQL from file to the current database. */
 utax_rc utax_schema_apply_from_file(utax_db_t *db, const char *schema_sql_path);
 
+/** @brief Drop all schema objects managed by this project. */
 utax_rc utax_schema_drop_all(utax_db_t *db);
 
+/** @brief Recreate schema by dropping existing objects and applying SQL from file. */
 utax_rc utax_schema_recreate_from_file(utax_db_t *db, const char *schema_sql_path);
 
+/** @brief Read SQLite user version value. */
 utax_rc utax_schema_get_user_version(utax_db_t *db, int *out_version);
+/** @brief Set SQLite user version value. */
 utax_rc utax_schema_set_user_version(utax_db_t *db, int version);
 
 #ifdef __cplusplus

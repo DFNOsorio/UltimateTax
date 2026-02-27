@@ -5,6 +5,7 @@
 #include "utax_fifo_realized.h"
 #include "utax_fifo_snapshot.h"
 #include "utax_fifo_snapshot_action_applied.h"
+#include "utax_options.h"
 #include "utax_schema.h"
 #include "utax_trades.h"
 
@@ -167,16 +168,50 @@ static utax_rc utax__collect_brokers_for_year(utax_db_t *db,
         }
     }
 
-    utax_corporate_actions_row *actions = NULL;
-    size_t action_count = 0;
-    rc = utax__collect_actions_for_year(db, year, &actions, &action_count);
+    utax_options_filter of;
+    memset(&of, 0, sizeof(of));
+    of.has_year = 1;
+    of.year = (int)year;
+    of.year_mode = UTAX_YEAR_EXACT;
+
+    long long options_needed_ll = 0;
+    rc = utax_options_count_filtered(db, &of, &options_needed_ll);
     if (rc != UTAX_OK) {
         free(rows);
         return rc;
     }
 
-    size_t cap = got + (action_count * 2);
+    size_t options_needed = (options_needed_ll <= 0) ? 0 : (size_t)options_needed_ll;
+    utax_options_row *option_rows = NULL;
+    size_t options_got = 0;
+    if (options_needed > 0) {
+        option_rows = (utax_options_row *)calloc(options_needed, sizeof(*option_rows));
+        if (!option_rows) {
+            free(rows);
+            return UTAX_ERR_NOMEM;
+        }
+
+        size_t req = 0;
+        rc = utax_options_get_filtered(db, &of, option_rows, options_needed, &options_got, &req);
+        if (rc != UTAX_OK) {
+            free(option_rows);
+            free(rows);
+            return rc;
+        }
+    }
+
+    utax_corporate_actions_row *actions = NULL;
+    size_t action_count = 0;
+    rc = utax__collect_actions_for_year(db, year, &actions, &action_count);
+    if (rc != UTAX_OK) {
+        free(option_rows);
+        free(rows);
+        return rc;
+    }
+
+    size_t cap = got + options_got + (action_count * 2);
     if (cap == 0) {
+        free(option_rows);
         free(rows);
         free(actions);
         return UTAX_OK;
@@ -206,6 +241,11 @@ static utax_rc utax__collect_brokers_for_year(utax_db_t *db,
         utax__append_unique_broker(brokers, cap, &broker_count, rows[i].broker);
     }
 
+    for (size_t i = 0; i < options_got; ++i) {
+        utax__append_unique_broker(brokers, cap, &broker_count, option_rows[i].broker);
+    }
+
+    free(option_rows);
     free(rows);
     free(actions);
 

@@ -206,6 +206,60 @@ ON dividends(dividend_year, dividend_dt, dividend_id);
 CREATE INDEX IF NOT EXISTS idx_div_broker_year
 ON dividends(broker, dividend_year, dividend_dt, dividend_id);
 
+CREATE TABLE IF NOT EXISTS options_operations (
+    option_id            INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    broker               TEXT NOT NULL,
+    ticker               TEXT NOT NULL,
+    country              TEXT NOT NULL,
+
+    bought_dt            TEXT NOT NULL,
+    expiration_dt        TEXT NOT NULL,
+
+    bought_year          INTEGER
+                         GENERATED ALWAYS AS (CAST(substr(bought_dt, 1, 4) AS INTEGER)) STORED,
+
+    amount_x100          INTEGER NOT NULL CHECK (amount_x100 <> 0),
+    per_contract         REAL NOT NULL CHECK (per_contract >= 0.0),
+    tax                  REAL NOT NULL CHECK (tax >= 0.0),
+
+    currency             TEXT NOT NULL,
+    conversion_rate_eur  REAL NOT NULL CHECK (conversion_rate_eur > 0.0),
+
+    CHECK (
+        length(bought_dt) = 16
+        AND substr(bought_dt, 5, 1) = '-'
+        AND substr(bought_dt, 8, 1) = '-'
+        AND substr(bought_dt, 11, 1) = ' '
+        AND substr(bought_dt, 14, 1) = ':'
+    ),
+    CHECK (
+        length(expiration_dt) = 16
+        AND substr(expiration_dt, 5, 1) = '-'
+        AND substr(expiration_dt, 8, 1) = '-'
+        AND substr(expiration_dt, 11, 1) = ' '
+        AND substr(expiration_dt, 14, 1) = ':'
+    )
+);
+
+CREATE INDEX IF NOT EXISTS idx_options_bought_dt
+ON options_operations(bought_dt, option_id);
+
+CREATE INDEX IF NOT EXISTS idx_options_ticker_bought_dt
+ON options_operations(ticker, bought_dt, option_id);
+
+CREATE INDEX IF NOT EXISTS idx_options_broker_ticker_bought_dt
+ON options_operations(broker, ticker, bought_dt, option_id);
+
+CREATE INDEX IF NOT EXISTS idx_options_year
+ON options_operations(bought_year);
+
+CREATE INDEX IF NOT EXISTS idx_options_year_broker
+ON options_operations(bought_year, broker);
+
+CREATE INDEX IF NOT EXISTS idx_options_year_broker_ticker
+ON options_operations(bought_year, broker, ticker);
+
 CREATE TABLE IF NOT EXISTS corporate_actions (
     action_id     INTEGER PRIMARY KEY AUTOINCREMENT,
 

@@ -8,7 +8,7 @@ function(utax_add_test name)
     target_include_directories(${name} PRIVATE ${CMAKE_SOURCE_DIR}/vendor/sqlite)
 
     if(MSVC)
-        target_compile_options(${name} PRIVATE /W4 /permissive-)
+        target_compile_options(${name} PRIVATE /W4 /permissive- /wd4100 /wd4189)
         target_compile_definitions(${name} PRIVATE _CRT_SECURE_NO_WARNINGS)
     else()
         target_compile_options(${name} PRIVATE -Wall -Wextra -Wpedantic)
@@ -61,6 +61,22 @@ utax_add_test(utax_test_dividends_csv
 
 add_test(NAME utax_test_dividends_csv
   COMMAND $<TARGET_FILE:utax_test_dividends_csv> "${CMAKE_SOURCE_DIR}/db/portfolio/schema.sql"
+)
+
+utax_add_test(utax_test_options
+  test_options.c
+)
+
+add_test(NAME utax_test_options
+  COMMAND $<TARGET_FILE:utax_test_options> "${CMAKE_SOURCE_DIR}/db/portfolio/schema.sql"
+)
+
+utax_add_test(utax_test_options_csv
+  test_options_csv.c
+)
+
+add_test(NAME utax_test_options_csv
+  COMMAND $<TARGET_FILE:utax_test_options_csv> "${CMAKE_SOURCE_DIR}/db/portfolio/schema.sql"
 )
 
 utax_add_test(utax_test_fifo_snapshot

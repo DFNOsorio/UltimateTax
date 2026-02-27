@@ -73,6 +73,7 @@ static void expect_core_tables_exist(sqlite3 *db) {
     assert(sqlite_table_exists(db, "fifo_snapshot"));
     assert(sqlite_table_exists(db, "fifo_realized"));
     assert(sqlite_table_exists(db, "dividends"));
+    assert(sqlite_table_exists(db, "options_operations"));
 }
 
 static void expect_core_tables_absent(sqlite3 *db) {
@@ -80,6 +81,7 @@ static void expect_core_tables_absent(sqlite3 *db) {
     assert(!sqlite_table_exists(db, "fifo_snapshot"));
     assert(!sqlite_table_exists(db, "fifo_realized"));
     assert(!sqlite_table_exists(db, "dividends"));
+    assert(!sqlite_table_exists(db, "options_operations"));
 }
 
 int main(int argc, char **argv) {

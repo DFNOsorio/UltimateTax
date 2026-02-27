@@ -1,6 +1,10 @@
 #ifndef ULTIMATETAX_UTAX_DB_H
 #define ULTIMATETAX_UTAX_DB_H
 
+/** @file utax_db.h
+ *  @brief Database handle, open/close options, and common return codes.
+ */
+
 #include <stdint.h>
 #ifdef __cplusplus
 extern "C" {
@@ -28,10 +32,10 @@ extern "C" {
   #endif
 #endif
 
-/* Opaque DB handle */
+/** @brief Opaque database handle type. */
 typedef struct utax_db utax_db_t;
 
-/* Return codes */
+/** @brief Return codes used across the public API. */
 typedef enum utax_rc {
     UTAX_OK = 0,
 
@@ -57,30 +61,32 @@ typedef enum utax_rc {
     UTAX_ERR_UNSUPPORTED = 25    /* unsupported delimiter/format */
 } utax_rc;
 
+/** @brief Year filtering mode for APIs that support tax-year queries. */
 typedef enum utax_year_mode {
     UTAX_YEAR_EXACT = 0,
     UTAX_YEAR_UP_TO = 1
 } utax_year_mode;
 
 
+/** @brief Options used when opening a database connection. */
 typedef struct utax_db_open_opts {
     int create_if_missing;   /* default 1 */
     int read_only;           /* default 0 */
     int busy_timeout_ms;     /* default 5000 */
 } utax_db_open_opts;
 
-/* Defaults */
+/** @brief Returns default values for @ref utax_db_open_opts. */
 UTAX_API utax_db_open_opts utax_db_open_opts_default(void);
 
-/* Open database at path */
+/** @brief Opens a database at the given filesystem path. */
 UTAX_API utax_rc utax_db_open(const char *path,
                               const utax_db_open_opts *opts,
                               utax_db_t **out_db);
 
-/* Close database */
+/** @brief Closes an open database handle. */
 UTAX_API utax_rc utax_db_close(utax_db_t *db);
 
-/* Last error string (owned by handle; valid until close) */
+/** @brief Returns the last error string owned by the handle. */
 UTAX_API const char *utax_db_last_error(const utax_db_t *db);
 
 

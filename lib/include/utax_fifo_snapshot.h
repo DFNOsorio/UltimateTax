@@ -1,4 +1,8 @@
 #pragma once
+/** @file utax_fifo_snapshot.h
+ *  @brief FIFO snapshot-lot database CRUD and query APIs.
+ */
+
 #include "utax_db.h"
 #include "utax_schema.h"
 
@@ -6,6 +10,7 @@
 extern "C" {
 #endif
 
+/** @brief Filter options for listing and counting FIFO snapshot rows. */
 typedef struct utax_fifo_snapshot_filter {
     int has_year;
     int year;
@@ -28,6 +33,7 @@ typedef struct utax_fifo_snapshot_filter {
 } utax_fifo_snapshot_filter;
 
 /* CRUD */
+/** @brief Inserts one FIFO snapshot row. */
 UTAX_API utax_rc utax_fifo_snapshot_insert(utax_db_t *db, const utax_fifo_snapshot_row *row, long long *out_lot_id);
 
 /* NEW: Batch insert
@@ -36,20 +42,27 @@ UTAX_API utax_rc utax_fifo_snapshot_insert(utax_db_t *db, const utax_fifo_snapsh
    - On failure: ROLLBACK; returns UTAX_ERR_SQLITE (or another error), sets *out_inserted = number of rows processed before failure.
      NOTE: because of rollback, the DB will contain NONE of the inserted rows.
 */
+/** @brief Inserts many FIFO snapshot rows in a single transaction. */
 UTAX_API utax_rc utax_fifo_snapshot_insert_many(utax_db_t *db,
                                                 utax_fifo_snapshot_row *rows,
                                                 size_t n,
                                                 size_t *out_inserted);
 
+/** @brief Updates a FIFO snapshot row by primary key. */
 UTAX_API utax_rc utax_fifo_snapshot_update_by_id(utax_db_t *db, long long lot_id, const utax_fifo_snapshot_row *row);
+/** @brief Deletes a FIFO snapshot row by primary key. */
 UTAX_API utax_rc utax_fifo_snapshot_delete_by_id(utax_db_t *db, long long lot_id);
 
 /* Counts */
+/** @brief Counts all FIFO snapshot rows. */
 UTAX_API utax_rc utax_fifo_snapshot_count_total(utax_db_t *db, long long *out_count);
+/** @brief Counts rows matching filters, ignoring pagination fields. */
 UTAX_API utax_rc utax_fifo_snapshot_count_filtered(utax_db_t *db, const utax_fifo_snapshot_filter *f, long long *out_count); /* ignores pagination */
+/** @brief Counts rows matching filters with pagination applied. */
 UTAX_API utax_rc utax_fifo_snapshot_count_page(utax_db_t *db, const utax_fifo_snapshot_filter *f, long long *out_count);     /* applies pagination */
 
 /* Query rows (paged) */
+/** @brief Fetches filtered FIFO snapshot rows into a preallocated output buffer. */
 UTAX_API utax_rc utax_fifo_snapshot_get_filtered(utax_db_t *db,
                                                  const utax_fifo_snapshot_filter *f,
                                                  utax_fifo_snapshot_row *out_rows,
