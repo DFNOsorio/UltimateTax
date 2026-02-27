@@ -152,7 +152,7 @@ int main(int argc, char **argv) {
         assert(rid > 0);
     }
 
-    rc = process_year_trades(db, 2023, NULL, NULL);
+    rc = process_year_trades(db, 2023, NULL, NULL, NULL);
     assert(rc == UTAX_OK);
 
     {
@@ -196,13 +196,13 @@ int main(int argc, char **argv) {
     }
 
     size_t no_export_total = 1234;
-    rc = process_year_trades(db, 2030, NULL, &no_export_total);
+    rc = process_year_trades(db, 2030, NULL, NULL, &no_export_total);
     assert(rc == UTAX_OK);
     assert(no_export_total == 1234);
 
     utax_fifo_realized_row *export_rows = NULL;
     size_t export_total = 0;
-    rc = process_year_trades(db, 2025, &export_rows, &export_total);
+    rc = process_year_trades(db, 2025, "IKBR", &export_rows, &export_total);
     assert(rc == UTAX_OK);
     assert(export_total == 2);
 
@@ -295,7 +295,7 @@ int main(int argc, char **argv) {
     assert(rc == UTAX_ERR_NOT_FOUND);
 
     /* run the same processing year again to explicitly validate re-run behavior */
-    rc = process_year_trades(db, 2025, NULL, NULL);
+    rc = process_year_trades(db, 2025, "IKBR", NULL, NULL);
     assert(rc == UTAX_OK);
 
     {

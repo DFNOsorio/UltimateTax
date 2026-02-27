@@ -157,11 +157,11 @@ int main(int argc, char **argv) {
     size_t total = 0;
 
     size_t no_export_total = 999;
-    rc = process_year_dividends_country_totals(db, 2025, NULL, &no_export_total);
+    rc = process_year_dividends_country_totals(db, 2025, NULL, NULL, &no_export_total);
     assert(rc == UTAX_OK);
     assert(no_export_total == 999);
 
-    rc = process_year_dividends_country_totals(db, 2025, &rows_out, &total);
+    rc = process_year_dividends_country_totals(db, 2025, NULL, &rows_out, &total);
     assert(rc == UTAX_OK);
     assert(total == 3);
 
@@ -185,7 +185,17 @@ int main(int argc, char **argv) {
 
     process_year_free_dividends_country_total_rows(&rows_out, &total);
 
-    rc = process_year_dividends_country_totals(db, 2024, &rows_out, &total);
+    rc = process_year_dividends_country_totals(db, 2025, "IKBR", &rows_out, &total);
+    assert(rc == UTAX_OK);
+    assert(total == 1);
+    assert(strcmp(rows_out[0].country, "US") == 0);
+    assert(UTAX_NEAR(rows_out[0].gross_amount_eur, 150.0));
+    assert(UTAX_NEAR(rows_out[0].taxes_eur, 20.0));
+    assert(UTAX_NEAR(rows_out[0].total_eur, 130.0));
+
+    process_year_free_dividends_country_total_rows(&rows_out, &total);
+
+    rc = process_year_dividends_country_totals(db, 2024, NULL, &rows_out, &total);
     assert(rc == UTAX_OK);
     assert(total == 1);
     assert(strcmp(rows_out[0].country, "US") == 0);

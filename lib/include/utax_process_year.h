@@ -10,6 +10,7 @@ extern "C" {
 UTAX_API utax_rc process_year_trades(
     utax_db_t *db,
     uint16_t year,
+    const char *broker,
     utax_fifo_realized_row **out_rows,
     size_t *out_count
 );
@@ -29,6 +30,7 @@ typedef struct utax_dividends_country_total_row {
 UTAX_API utax_rc process_year_dividends_country_totals(
     utax_db_t *db,
     uint16_t year,
+    const char *broker,
     utax_dividends_country_total_row **out_rows,
     size_t *out_count
 );

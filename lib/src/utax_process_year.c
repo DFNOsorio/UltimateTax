@@ -651,6 +651,7 @@ static utax_rc utax__delete_snapshot_for_broker_year(utax_db_t *db, const char *
 UTAX_API utax_rc process_year_trades(
     utax_db_t *db,
     uint16_t year,
+    const char *broker,
     utax_fifo_realized_row **out_rows,
     size_t *out_count
 ) {
@@ -668,11 +669,19 @@ UTAX_API utax_rc process_year_trades(
         *out_count = 0;
     }
 
-    utax_rc rc = utax__collect_brokers_for_year(db, year, &brokers, &broker_count);
-    if (rc != UTAX_OK) return rc;
+    utax_rc rc = UTAX_OK;
+    if (broker && broker[0] != '\0') {
+        brokers = (char (*)[UTAX_BROKER_MAX])calloc(1, sizeof(*brokers));
+        if (!brokers) return UTAX_ERR_NOMEM;
+        utax__copy_text(brokers[0], sizeof(brokers[0]), broker);
+        broker_count = 1;
+    } else {
+        rc = utax__collect_brokers_for_year(db, year, &brokers, &broker_count);
+        if (rc != UTAX_OK) return rc;
+    }
 
     for (size_t i = 0; i < broker_count; ++i) {
-        const char *broker = brokers[i];
+        const char *broker_name = brokers[i];
 
         utax_trades_row *buy_rows = NULL;
         size_t buy_count = 0;
@@ -685,26 +694,26 @@ UTAX_API utax_rc process_year_trades(
         utax_fifo_snapshot_row *buy_snapshot_rows = NULL;
         size_t buy_snapshot_count = 0;
 
-        rc = utax__delete_realized_for_broker_year(db, broker, (int)year);
+        rc = utax__delete_realized_for_broker_year(db, broker_name, (int)year);
         if (rc != UTAX_OK) break;
 
-        rc = utax__delete_snapshot_for_broker_year(db, broker, (int)year);
+        rc = utax__delete_snapshot_for_broker_year(db, broker_name, (int)year);
         if (rc != UTAX_OK) break;
 
-        rc = utax__collect_trades_for_broker_type_year(db, broker, "BUY", year, &buy_rows, &buy_count);
+        rc = utax__collect_trades_for_broker_type_year(db, broker_name, "BUY", year, &buy_rows, &buy_count);
         if (rc != UTAX_OK) goto broker_cleanup;
 
-        rc = utax__collect_trades_for_broker_type_year(db, broker, "SELL", year, &sell_rows, &sell_count);
+        rc = utax__collect_trades_for_broker_type_year(db, broker_name, "SELL", year, &sell_rows, &sell_count);
         if (rc != UTAX_OK) goto broker_cleanup;
 
         rc = utax__collect_snapshot_for_broker_up_to_year(db,
-                                                          broker,
+                                                          broker_name,
                                                           (int)year - 1,
                                                           &snapshot_rows,
                                                           &snapshot_count);
         if (rc != UTAX_OK) goto broker_cleanup;
 
-        rc = utax__collect_actions_for_broker_year(db, broker, year, &action_rows, &action_count);
+        rc = utax__collect_actions_for_broker_year(db, broker_name, year, &action_rows, &action_count);
         if (rc != UTAX_OK) goto broker_cleanup;
 
         rc = utax__convert_buys_to_snapshots(buy_rows,
@@ -744,6 +753,7 @@ UTAX_API utax_rc process_year_trades(
                     utax_fifo_snapshot_row *lot = &lots[l];
                     if (lot->qty_remaining <= UTAX_QTY_EPS) continue;
                     if (strcmp(lot->ticker, sell->ticker) != 0) continue;
+                    if (strcmp(lot->acq_datetime, sell->trade_datetime) > 0) continue;
 
                     double lot_qty_before = lot->qty_remaining;
                     double matched = (lot_qty_before < qty_to_match) ? lot_qty_before : qty_to_match;
@@ -827,7 +837,7 @@ UTAX_API utax_rc process_year_trades(
             if (row->qty_remaining <= UTAX_QTY_EPS) {
                 rc = utax_fifo_snapshot_delete_by_id(db, row->lot_id);
             } else {
-                if (strcmp(row->broker, broker) == 0) {
+                if (strcmp(row->broker, broker_name) == 0) {
                     row->tax_year = (int)year;
                 }
                 rc = utax_fifo_snapshot_update_by_id(db, row->lot_id, row);
@@ -890,6 +900,7 @@ broker_cleanup:
 UTAX_API utax_rc process_year_dividends_country_totals(
     utax_db_t *db,
     uint16_t year,
+    const char *broker,
     utax_dividends_country_total_row **out_rows,
     size_t *out_count
 ) {
@@ -905,6 +916,10 @@ UTAX_API utax_rc process_year_dividends_country_totals(
     f.has_year = 1;
     f.year = (int)year;
     f.year_mode = UTAX_YEAR_EXACT;
+    if (broker && broker[0] != '\0') {
+        f.has_broker = 1;
+        utax__copy_text(f.broker, sizeof(f.broker), broker);
+    }
 
     long long needed_ll = 0;
     utax_rc rc = utax_dividends_count_filtered(db, &f, &needed_ll);
