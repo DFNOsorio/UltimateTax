@@ -63,7 +63,10 @@ UTAX_API utax_rc utax_market_data_lookup_yahoo_date_from_json(
  * @param date_yyyy_mm_dd Quote date in `YYYY-MM-DD` format.
  * @param include_dividend_yield Non-zero to request dividend-yield extraction.
  * @param out_quote Output quote structure.
- *        Populates quote price/currency and attempts to fetch current FX conversion rate to EUR.
+ *        Populates quote price/currency and attempts to fetch FX conversion rate to EUR.
+ *        If no stock data exists for the requested date, it retries up to 3 previous days.
+ *        If no FX value exists for the quote date, it retries up to 3 previous days.
+ *        `out_quote->date_yyyy_mm_dd` is the actual stock quote date used after fallback.
  * @return @ref UTAX_OK on success, otherwise an error code.
  */
 UTAX_API utax_rc utax_market_data_lookup_yahoo_date(

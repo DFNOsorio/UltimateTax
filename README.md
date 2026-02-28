@@ -99,6 +99,10 @@ Most integration-style tests use `db/portfolio/schema.sql` as input.
 - `fifo_snapshot.last_updated_stock_currency` stores that quote currency (for example `USD`).
 - `fifo_snapshot.last_updated_stock_conversion_rate_eur` stores the quote-currency FX rate to EUR.
 - `fifo_snapshot.current_lot_value_eur` is generated from `qty_remaining * (last_updated_stock_price / last_updated_stock_conversion_rate_eur)`.
+- Market lookup fallback policy:
+  - Stock quote lookup tries requested date, then up to 3 previous days.
+  - FX lookup (quote currency -> EUR) tries quote date, then up to 3 previous days.
+  - `fifo_snapshot.last_price_update_date` stores the actual stock quote date used after fallback.
 
 ## Installation/Consumption
 

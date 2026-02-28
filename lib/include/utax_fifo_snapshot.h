@@ -128,6 +128,8 @@ UTAX_API utax_rc utax_fifo_snapshot_get_filtered(utax_db_t *db,
 */
 /**
  * @brief Updates one snapshot lot quote fields by lot id.
+ *        If market data is unavailable on the requested date, lookup falls back up to 3 days back.
+ *        Stored `last_price_update_date` is the actual quote date used.
  * @param db Open database handle.
  * @param lot_id Snapshot lot identifier.
  * @param date_yyyy_mm_dd Quote date in `YYYY-MM-DD` format.
@@ -139,6 +141,8 @@ UTAX_API utax_rc utax_fifo_snapshot_update_price_by_lot_id(utax_db_t *db,
 
 /**
  * @brief Updates all snapshot lots for a ticker using market data for one date.
+ *        If market data is unavailable on the requested date, lookup falls back up to 3 days back.
+ *        Stored `last_price_update_date` is the actual quote date used.
  * @param db Open database handle.
  * @param ticker Ticker symbol.
  * @param date_yyyy_mm_dd Quote date in `YYYY-MM-DD` format.
@@ -154,6 +158,8 @@ UTAX_API utax_rc utax_fifo_snapshot_update_prices_by_ticker(utax_db_t *db,
 
 /**
  * @brief Mass-updates snapshot lots selected by filter/pagination.
+ *        If market data is unavailable on the requested date, lookup falls back up to 3 days back.
+ *        Stored `last_price_update_date` is the actual quote date used.
  * @param db Open database handle.
  * @param date_yyyy_mm_dd Quote date in `YYYY-MM-DD` format.
  * @param f Optional filter criteria including pagination.

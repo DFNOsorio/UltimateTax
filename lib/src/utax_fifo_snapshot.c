@@ -533,7 +533,7 @@ utax_rc utax_fifo_snapshot_update_price_by_lot_id(utax_db_t *db,
 
     sqlite3_clear_bindings(upd);
     sqlite3_reset(upd);
-    (void)utax__bind_text(upd, 1, date_yyyy_mm_dd);
+    (void)utax__bind_text(upd, 1, q.date_yyyy_mm_dd);
     sqlite3_bind_double(upd, 2, q.close_price);
     (void)utax__bind_text(upd, 3, quote_currency);
     sqlite3_bind_double(upd, 4, conversion_rate_eur);
@@ -607,7 +607,7 @@ utax_rc utax_fifo_snapshot_update_prices_by_ticker(utax_db_t *db,
                     "WHERE ticker=?5;");
     if (rc != UTAX_OK) return rc;
 
-    (void)utax__bind_text(upd, 1, date_yyyy_mm_dd);
+    (void)utax__bind_text(upd, 1, q.date_yyyy_mm_dd);
     sqlite3_bind_double(upd, 2, q.close_price);
     (void)utax__bind_text(upd, 3, quote_currency);
     sqlite3_bind_double(upd, 4, conversion_rate_eur);
@@ -693,7 +693,7 @@ utax_rc utax_fifo_snapshot_update_prices_paged(utax_db_t *db,
 
         sqlite3_clear_bindings(upd);
         sqlite3_reset(upd);
-        (void)utax__bind_text(upd, 1, date_yyyy_mm_dd);
+        (void)utax__bind_text(upd, 1, q.date_yyyy_mm_dd);
         sqlite3_bind_double(upd, 2, q.close_price);
         (void)utax__bind_text(upd, 3, quote_currency);
         sqlite3_bind_double(upd, 4, conversion_rate_eur);
