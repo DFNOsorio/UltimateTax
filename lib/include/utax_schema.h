@@ -52,6 +52,7 @@ typedef struct utax_fifo_snapshot_row {
     double cost_per_share_eur;
     double acq_commission_eur;
     double last_updated_stock_price;
+    double last_updated_stock_conversion_rate_eur;
     double current_lot_value_eur; /* generated in DB, but convenient to return */
 
     int tax_year;
@@ -60,6 +61,7 @@ typedef struct utax_fifo_snapshot_row {
     char ticker[UTAX_TICKER_MAX];
     char acq_datetime[UTAX_DT_MAX];
     char last_price_update_date[UTAX_DT_MAX];
+    char last_updated_stock_currency[UTAX_CCY_MAX];
     char country[UTAX_COUNTRY_MAX];
 } utax_fifo_snapshot_row;
 

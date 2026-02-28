@@ -120,9 +120,14 @@ UTAX_API utax_rc utax_fifo_snapshot_get_filtered(utax_db_t *db,
                                                  size_t *out_count,
                                                  size_t *out_required);
 
-/* Market-data driven price refresh APIs (phase-2) */
+/* Market-data driven price refresh APIs (phase-2).
+   Stored quote fields are:
+   - original quote price (`last_updated_stock_price`)
+   - quote currency (`last_updated_stock_currency`)
+   - FX rate to EUR (`last_updated_stock_conversion_rate_eur`)
+*/
 /**
- * @brief Updates one snapshot lot stock price by lot id.
+ * @brief Updates one snapshot lot quote fields by lot id.
  * @param db Open database handle.
  * @param lot_id Snapshot lot identifier.
  * @param date_yyyy_mm_dd Quote date in `YYYY-MM-DD` format.

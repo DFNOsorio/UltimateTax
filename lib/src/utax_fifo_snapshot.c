@@ -68,34 +68,27 @@ static void utax__col_text(sqlite3_stmt *st, int col, char *dst, size_t dst_sz) 
     UTAX_STRNCPY(dst, dst_sz, (const char *)t);
 }
 
-static utax_rc utax__update_price_by_lot_stmt(struct utax_db *h,
-                                               sqlite3_stmt *st,
-                                               long long lot_id,
-                                               const char *date_yyyy_mm_dd,
-                                               double price)
-{
-    sqlite3_clear_bindings(st);
-    sqlite3_reset(st);
-
-    (void)utax__bind_text(st, 1, date_yyyy_mm_dd);
-    sqlite3_bind_double(st, 2, price);
-    sqlite3_bind_int64(st, 3, (sqlite3_int64)lot_id);
-
-    {
-        int s = sqlite3_step(st);
-        if (s != SQLITE_DONE) return utax__set_err_sqlite(h, s);
-    }
-
-    if (sqlite3_changes(h->db) == 0) {
-        utax__set_err_msg(h, "fifo_snapshot lot_id not found");
-        return UTAX_ERR_NOT_FOUND;
-    }
-
-    return UTAX_OK;
-}
-
 static int utax__market_lookup_unavailable(utax_rc rc) {
     return rc != UTAX_OK;
+}
+
+static int utax__quote_currency_rate(const utax_market_quote *q, char *out_currency, size_t out_currency_sz, double *out_rate) {
+    if (!q || !out_currency || out_currency_sz == 0 || !out_rate) return 0;
+    if (q->currency[0] == '\0') return 0;
+
+    if (strcmp(q->currency, "EUR") == 0) {
+        UTAX_STRNCPY(out_currency, out_currency_sz, "EUR");
+        *out_rate = 1.0;
+        return 1;
+    }
+
+    if (q->has_conversion_rate_eur && q->conversion_rate_eur > 0.0) {
+        UTAX_STRNCPY(out_currency, out_currency_sz, q->currency);
+        *out_rate = q->conversion_rate_eur;
+        return 1;
+    }
+
+    return 0;
 }
 
 /* ───────────────────────────── CRUD ───────────────────────────── */
@@ -108,8 +101,14 @@ utax_rc utax_fifo_snapshot_insert(utax_db_t *db, const utax_fifo_snapshot_row *r
         "INSERT INTO fifo_snapshot ("
         " broker, tax_year, ticker, acq_trade_id, acq_datetime, "
         " qty_remaining, cost_per_share_eur, acq_commission_eur, "
-        " last_price_update_date, last_updated_stock_price, country"
-        ") VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11);";
+        " last_price_update_date, last_updated_stock_price, "
+        " last_updated_stock_currency, last_updated_stock_conversion_rate_eur, "
+        " country"
+        ") VALUES ("
+        " ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, "
+        " COALESCE(NULLIF(?11,''),'EUR'), CASE WHEN ?12 > 0.0 THEN ?12 ELSE 1.0 END, "
+        " ?13"
+        ");";
 
     sqlite3_stmt *st = NULL;
     utax_rc rc = utax__prep(h, &st, sql);
@@ -126,8 +125,9 @@ utax_rc utax_fifo_snapshot_insert(utax_db_t *db, const utax_fifo_snapshot_row *r
     sqlite3_bind_double(st, 8, row->acq_commission_eur);
     (void)utax__bind_text(st, 9, row->last_price_update_date[0] ? row->last_price_update_date : "");
     sqlite3_bind_double(st, 10, row->last_updated_stock_price);
-
-    (void)utax__bind_text(st, 11, row->country);
+    (void)utax__bind_text(st, 11, row->last_updated_stock_currency);
+    sqlite3_bind_double(st, 12, row->last_updated_stock_conversion_rate_eur);
+    (void)utax__bind_text(st, 13, row->country);
 
     int s = sqlite3_step(st);
     sqlite3_finalize(st);
@@ -154,8 +154,14 @@ utax_rc utax_fifo_snapshot_insert_many(utax_db_t *db,
         "INSERT INTO fifo_snapshot ("
         " broker, tax_year, ticker, acq_trade_id, acq_datetime, "
         " qty_remaining, cost_per_share_eur, acq_commission_eur, "
-        " last_price_update_date, last_updated_stock_price, country"
-        ") VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11);";
+        " last_price_update_date, last_updated_stock_price, "
+        " last_updated_stock_currency, last_updated_stock_conversion_rate_eur, "
+        " country"
+        ") VALUES ("
+        " ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, "
+        " COALESCE(NULLIF(?11,''),'EUR'), CASE WHEN ?12 > 0.0 THEN ?12 ELSE 1.0 END, "
+        " ?13"
+        ");";
 
     /* Begin transaction (DEFERRED) */
     {
@@ -188,8 +194,9 @@ utax_rc utax_fifo_snapshot_insert_many(utax_db_t *db,
         sqlite3_bind_double(st, 8, r->acq_commission_eur);
         (void)utax__bind_text(st, 9, r->last_price_update_date[0] ? r->last_price_update_date : "");
         sqlite3_bind_double(st, 10, r->last_updated_stock_price);
-
-        (void)utax__bind_text(st, 11, r->country);
+        (void)utax__bind_text(st, 11, r->last_updated_stock_currency);
+        sqlite3_bind_double(st, 12, r->last_updated_stock_conversion_rate_eur);
+        (void)utax__bind_text(st, 13, r->country);
 
         int s = sqlite3_step(st);
         if (s != SQLITE_DONE) {
@@ -225,8 +232,11 @@ utax_rc utax_fifo_snapshot_update_by_id(utax_db_t *db, long long lot_id, const u
         "UPDATE fifo_snapshot SET "
         " broker=?1, tax_year=?2, ticker=?3, acq_trade_id=?4, acq_datetime=?5, "
         " qty_remaining=?6, cost_per_share_eur=?7, acq_commission_eur=?8, "
-        " last_price_update_date=?9, last_updated_stock_price=?10, country=?11 "
-        "WHERE lot_id=?12;";
+        " last_price_update_date=?9, last_updated_stock_price=?10, "
+        " last_updated_stock_currency=COALESCE(NULLIF(?11,''),'EUR'), "
+        " last_updated_stock_conversion_rate_eur=CASE WHEN ?12 > 0.0 THEN ?12 ELSE 1.0 END, "
+        " country=?13 "
+        "WHERE lot_id=?14;";
 
     sqlite3_stmt *st = NULL;
     utax_rc rc = utax__prep(h, &st, sql);
@@ -243,10 +253,11 @@ utax_rc utax_fifo_snapshot_update_by_id(utax_db_t *db, long long lot_id, const u
     sqlite3_bind_double(st, 8, row->acq_commission_eur);
     (void)utax__bind_text(st, 9, row->last_price_update_date[0] ? row->last_price_update_date : "");
     sqlite3_bind_double(st, 10, row->last_updated_stock_price);
+    (void)utax__bind_text(st, 11, row->last_updated_stock_currency);
+    sqlite3_bind_double(st, 12, row->last_updated_stock_conversion_rate_eur);
+    (void)utax__bind_text(st, 13, row->country);
 
-    (void)utax__bind_text(st, 11, row->country);
-
-    sqlite3_bind_int64(st, 12, (sqlite3_int64)lot_id);
+    sqlite3_bind_int64(st, 14, (sqlite3_int64)lot_id);
 
     int s = sqlite3_step(st);
     sqlite3_finalize(st);
@@ -412,8 +423,9 @@ utax_rc utax_fifo_snapshot_get_filtered(utax_db_t *db,
         "SELECT "
         " lot_id, broker, tax_year, ticker, acq_trade_id, acq_datetime, "
         " qty_remaining, cost_per_share_eur, acq_commission_eur, "
-        " last_price_update_date, last_updated_stock_price, current_lot_value_eur, "
-        " country "
+        " last_price_update_date, last_updated_stock_price, "
+        " last_updated_stock_currency, last_updated_stock_conversion_rate_eur, "
+        " current_lot_value_eur, country "
         "FROM fifo_snapshot WHERE 1=1"
     );
 
@@ -458,8 +470,10 @@ utax_rc utax_fifo_snapshot_get_filtered(utax_db_t *db,
         r->acq_commission_eur = sqlite3_column_double(st, 8);
         utax__col_text(st, 9, r->last_price_update_date, sizeof(r->last_price_update_date));
         r->last_updated_stock_price = sqlite3_column_double(st, 10);
-        r->current_lot_value_eur = sqlite3_column_double(st, 11);
-        utax__col_text(st, 12, r->country, sizeof(r->country));
+        utax__col_text(st, 11, r->last_updated_stock_currency, sizeof(r->last_updated_stock_currency));
+        r->last_updated_stock_conversion_rate_eur = sqlite3_column_double(st, 12);
+        r->current_lot_value_eur = sqlite3_column_double(st, 13);
+        utax__col_text(st, 14, r->country, sizeof(r->country));
     }
 
     sqlite3_finalize(st);
@@ -480,11 +494,14 @@ utax_rc utax_fifo_snapshot_update_price_by_lot_id(utax_db_t *db,
     sqlite3_stmt *sel = NULL;
     sqlite3_stmt *upd = NULL;
     utax_market_quote q;
+    double conversion_rate_eur = 0.0;
+    char quote_currency[UTAX_CCY_MAX];
     char ticker[UTAX_TICKER_MAX];
     utax_rc rc = UTAX_OK;
     int s = SQLITE_OK;
 
     ticker[0] = '\0';
+    quote_currency[0] = '\0';
 
     rc = utax__prep(h, &sel, "SELECT ticker FROM fifo_snapshot WHERE lot_id=?1;");
     if (rc != UTAX_OK) return rc;
@@ -505,16 +522,36 @@ utax_rc utax_fifo_snapshot_update_price_by_lot_id(utax_db_t *db,
 
     rc = utax_market_data_lookup_yahoo_date(ticker, date_yyyy_mm_dd, 0, &q);
     if (rc != UTAX_OK) return rc;
+    if (!utax__quote_currency_rate(&q, quote_currency, sizeof(quote_currency), &conversion_rate_eur)) return UTAX_ERR_NOT_FOUND;
 
     rc = utax__prep(h, &upd,
                     "UPDATE fifo_snapshot "
-                    "SET last_price_update_date=?1, last_updated_stock_price=?2 "
-                    "WHERE lot_id=?3;");
+                    "SET last_price_update_date=?1, last_updated_stock_price=?2, "
+                    " last_updated_stock_currency=?3, last_updated_stock_conversion_rate_eur=?4 "
+                    "WHERE lot_id=?5;");
     if (rc != UTAX_OK) return rc;
 
-    rc = utax__update_price_by_lot_stmt(h, upd, lot_id, date_yyyy_mm_dd, q.close_price);
+    sqlite3_clear_bindings(upd);
+    sqlite3_reset(upd);
+    (void)utax__bind_text(upd, 1, date_yyyy_mm_dd);
+    sqlite3_bind_double(upd, 2, q.close_price);
+    (void)utax__bind_text(upd, 3, quote_currency);
+    sqlite3_bind_double(upd, 4, conversion_rate_eur);
+    sqlite3_bind_int64(upd, 5, (sqlite3_int64)lot_id);
+    {
+        int su = sqlite3_step(upd);
+        if (su != SQLITE_DONE) {
+            sqlite3_finalize(upd);
+            return utax__set_err_sqlite(h, su);
+        }
+    }
+    if (sqlite3_changes(h->db) == 0) {
+        sqlite3_finalize(upd);
+        utax__set_err_msg(h, "fifo_snapshot lot_id not found");
+        return UTAX_ERR_NOT_FOUND;
+    }
     sqlite3_finalize(upd);
-    return rc;
+    return UTAX_OK;
 }
 
 utax_rc utax_fifo_snapshot_update_prices_by_ticker(utax_db_t *db,
@@ -532,6 +569,8 @@ utax_rc utax_fifo_snapshot_update_prices_by_ticker(utax_db_t *db,
     sqlite3_stmt *count_st = NULL;
     sqlite3_stmt *upd = NULL;
     utax_market_quote q;
+    double conversion_rate_eur = 0.0;
+    char quote_currency[UTAX_CCY_MAX];
     utax_rc rc = UTAX_OK;
     long long matched = 0;
 
@@ -556,16 +595,23 @@ utax_rc utax_fifo_snapshot_update_prices_by_ticker(utax_db_t *db,
         if (out_unavailable) *out_unavailable = (size_t)matched;
         return UTAX_OK;
     }
+    if (!utax__quote_currency_rate(&q, quote_currency, sizeof(quote_currency), &conversion_rate_eur)) {
+        if (out_unavailable) *out_unavailable = (size_t)matched;
+        return UTAX_OK;
+    }
 
     rc = utax__prep(h, &upd,
                     "UPDATE fifo_snapshot "
-                    "SET last_price_update_date=?1, last_updated_stock_price=?2 "
-                    "WHERE ticker=?3;");
+                    "SET last_price_update_date=?1, last_updated_stock_price=?2, "
+                    " last_updated_stock_currency=?3, last_updated_stock_conversion_rate_eur=?4 "
+                    "WHERE ticker=?5;");
     if (rc != UTAX_OK) return rc;
 
     (void)utax__bind_text(upd, 1, date_yyyy_mm_dd);
     sqlite3_bind_double(upd, 2, q.close_price);
-    (void)utax__bind_text(upd, 3, ticker);
+    (void)utax__bind_text(upd, 3, quote_currency);
+    sqlite3_bind_double(upd, 4, conversion_rate_eur);
+    (void)utax__bind_text(upd, 5, ticker);
 
     {
         int s = sqlite3_step(upd);
@@ -621,8 +667,9 @@ utax_rc utax_fifo_snapshot_update_prices_paged(utax_db_t *db,
 
     rc = utax__prep(h, &upd,
                     "UPDATE fifo_snapshot "
-                    "SET last_price_update_date=?1, last_updated_stock_price=?2 "
-                    "WHERE lot_id=?3;");
+                    "SET last_price_update_date=?1, last_updated_stock_price=?2, "
+                    " last_updated_stock_currency=?3, last_updated_stock_conversion_rate_eur=?4 "
+                    "WHERE lot_id=?5;");
     if (rc != UTAX_OK) {
         free(rows);
         return rc;
@@ -630,22 +677,38 @@ utax_rc utax_fifo_snapshot_update_prices_paged(utax_db_t *db,
 
     for (size_t i = 0; i < got; ++i) {
         utax_market_quote q;
+        double conversion_rate_eur = 0.0;
+        char quote_currency[UTAX_CCY_MAX];
+        quote_currency[0] = '\0';
         utax_rc lrc = utax_market_data_lookup_yahoo_date(rows[i].ticker, date_yyyy_mm_dd, 0, &q);
 
         if (utax__market_lookup_unavailable(lrc)) {
             unavailable++;
             continue;
         }
-
-        rc = utax__update_price_by_lot_stmt(h, upd, rows[i].lot_id, date_yyyy_mm_dd, q.close_price);
-        if (rc == UTAX_ERR_NOT_FOUND) {
+        if (!utax__quote_currency_rate(&q, quote_currency, sizeof(quote_currency), &conversion_rate_eur)) {
             unavailable++;
             continue;
         }
-        if (rc != UTAX_OK) {
-            sqlite3_finalize(upd);
-            free(rows);
-            return rc;
+
+        sqlite3_clear_bindings(upd);
+        sqlite3_reset(upd);
+        (void)utax__bind_text(upd, 1, date_yyyy_mm_dd);
+        sqlite3_bind_double(upd, 2, q.close_price);
+        (void)utax__bind_text(upd, 3, quote_currency);
+        sqlite3_bind_double(upd, 4, conversion_rate_eur);
+        sqlite3_bind_int64(upd, 5, (sqlite3_int64)rows[i].lot_id);
+        {
+            int su = sqlite3_step(upd);
+            if (su != SQLITE_DONE) {
+                sqlite3_finalize(upd);
+                free(rows);
+                return utax__set_err_sqlite(h, su);
+            }
+        }
+        if (sqlite3_changes(h->db) == 0) {
+            unavailable++;
+            continue;
         }
 
         updated++;

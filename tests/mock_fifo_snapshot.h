@@ -22,6 +22,8 @@ const utax_fifo_snapshot_mock UTAX_MOCK_FIFO_SNAPSHOTS[] = {
             .acq_commission_eur = 1.0,
             .last_price_update_date = "2024-01-11 16:00",
             .last_updated_stock_price = 95.5,
+            .last_updated_stock_currency = "USD",
+            .last_updated_stock_conversion_rate_eur = 1.0,
             .country = "US"
         },
         .acq_trade_datetime_key = "2024-01-10 09:30"
@@ -39,6 +41,8 @@ const utax_fifo_snapshot_mock UTAX_MOCK_FIFO_SNAPSHOTS[] = {
             .acq_commission_eur = 0.0,
             .last_price_update_date = "2025-02-06 16:00",
             .last_updated_stock_price = 48.0,
+            .last_updated_stock_currency = "USD",
+            .last_updated_stock_conversion_rate_eur = 1.0,
             .country = "US"
         },
         .acq_trade_datetime_key = "2025-02-05 10:00"
@@ -56,6 +60,8 @@ const utax_fifo_snapshot_mock UTAX_MOCK_FIFO_SNAPSHOTS[] = {
             .acq_commission_eur = 2.5,
             .last_price_update_date = "2026-03-04 16:00",
             .last_updated_stock_price = 300.0,
+            .last_updated_stock_currency = "USD",
+            .last_updated_stock_conversion_rate_eur = 1.0,
             .country = "US"
         },
         .acq_trade_datetime_key = "2026-03-03 09:00"

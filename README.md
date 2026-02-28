@@ -91,6 +91,15 @@ ctest --test-dir .\build_output -C Debug --output-on-failure
 
 Most integration-style tests use `db/portfolio/schema.sql` as input.
 
+## Schema Notes
+
+- `trades.price_per_share` stores the original trade-currency price.
+- `trades.conversion_rate_eur` stores the FX rate from trade currency to EUR.
+- `fifo_snapshot.last_updated_stock_price` stores the original quote-currency market price.
+- `fifo_snapshot.last_updated_stock_currency` stores that quote currency (for example `USD`).
+- `fifo_snapshot.last_updated_stock_conversion_rate_eur` stores the quote-currency FX rate to EUR.
+- `fifo_snapshot.current_lot_value_eur` is generated from `qty_remaining * (last_updated_stock_price / last_updated_stock_conversion_rate_eur)`.
+
 ## Installation/Consumption
 
 The project installs:

@@ -21,10 +21,13 @@ typedef enum utax_market_dividend_status {
 typedef struct utax_market_quote {
     char ticker[UTAX_TICKER_MAX];
     char date_yyyy_mm_dd[11];
+    char currency[UTAX_CCY_MAX];
 
     double close_price;
     double adjusted_close_price;
+    double conversion_rate_eur;
     int has_adjusted_close;
+    int has_conversion_rate_eur;
 
     utax_market_dividend_status dividend_status;
     double dividend_amount;
@@ -40,6 +43,8 @@ typedef struct utax_market_quote {
  * @param include_dividend_yield Non-zero to request dividend-yield extraction.
  * @param yahoo_chart_json Raw JSON payload from Yahoo chart endpoint.
  * @param out_quote Output quote structure.
+ *        Populates price/currency fields from Yahoo payload.
+ *        Does not fetch external FX data, so `has_conversion_rate_eur` remains false.
  * @return @ref UTAX_OK on success, otherwise an error code.
  */
 UTAX_API utax_rc utax_market_data_lookup_yahoo_date_from_json(
@@ -58,6 +63,7 @@ UTAX_API utax_rc utax_market_data_lookup_yahoo_date_from_json(
  * @param date_yyyy_mm_dd Quote date in `YYYY-MM-DD` format.
  * @param include_dividend_yield Non-zero to request dividend-yield extraction.
  * @param out_quote Output quote structure.
+ *        Populates quote price/currency and attempts to fetch current FX conversion rate to EUR.
  * @return @ref UTAX_OK on success, otherwise an error code.
  */
 UTAX_API utax_rc utax_market_data_lookup_yahoo_date(

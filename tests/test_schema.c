@@ -93,6 +93,8 @@ static void expect_core_tables_exist(sqlite3 *db) {
     assert(sqlite_table_exists(db, "fifo_snapshot"));
     assert(sqlite_column_exists(db, "fifo_snapshot", "last_price_update_date"));
     assert(sqlite_column_exists(db, "fifo_snapshot", "last_updated_stock_price"));
+    assert(sqlite_column_exists(db, "fifo_snapshot", "last_updated_stock_currency"));
+    assert(sqlite_column_exists(db, "fifo_snapshot", "last_updated_stock_conversion_rate_eur"));
     assert(sqlite_column_exists(db, "fifo_snapshot", "current_lot_value_eur"));
     assert(sqlite_table_exists(db, "fifo_realized"));
     assert(sqlite_table_exists(db, "dividends"));

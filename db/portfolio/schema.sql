@@ -82,7 +82,8 @@ CREATE INDEX IF NOT EXISTS idx_trades_year_broker_ticker
 -- Purpose: Open FIFO lots carried at year end / current state.
 -- Notes:
 -- - One row per open lot with acquisition linkage to `trades`.
--- - `current_lot_value_eur` is a VIRTUAL generated value.
+-- - Market quote fields store original quote currency price and FX rate to EUR.
+-- - `current_lot_value_eur` is a VIRTUAL generated value using quote FX conversion.
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS fifo_snapshot (
@@ -103,8 +104,14 @@ CREATE TABLE IF NOT EXISTS fifo_snapshot (
     acq_commission_eur  REAL NOT NULL DEFAULT 0.0 CHECK (acq_commission_eur >= 0.0),
     last_price_update_date TEXT NOT NULL DEFAULT '',
     last_updated_stock_price REAL NOT NULL DEFAULT 0.0 CHECK (last_updated_stock_price >= 0.0),
+    last_updated_stock_currency TEXT NOT NULL DEFAULT 'EUR',
+    last_updated_stock_conversion_rate_eur REAL NOT NULL DEFAULT 1.0 CHECK (last_updated_stock_conversion_rate_eur > 0.0),
     current_lot_value_eur REAL GENERATED ALWAYS AS (
-        COALESCE(qty_remaining, 0.0) * COALESCE(last_updated_stock_price, 0.0)
+        COALESCE(qty_remaining, 0.0) *
+        (
+            COALESCE(last_updated_stock_price, 0.0) /
+            COALESCE(last_updated_stock_conversion_rate_eur, 1.0)
+        )
     ) VIRTUAL,
 
     -- Metadata

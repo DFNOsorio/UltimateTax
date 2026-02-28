@@ -169,6 +169,56 @@ static int utax__extract_adjclose_value(const char *json, double *out_value, int
     return utax__parse_first_array_double(inner, out_value, out_is_null);
 }
 
+static int utax__extract_meta_currency(const char *json, char *out_ccy, size_t out_ccy_sz) {
+    const char *meta = NULL;
+    const char *key = NULL;
+    const char *val = NULL;
+    size_t i = 0;
+
+    if (!json || !out_ccy || out_ccy_sz == 0) return 0;
+    out_ccy[0] = '\0';
+
+    meta = strstr(json, "\"meta\"");
+    if (!meta) return 0;
+
+    key = strstr(meta, "\"currency\"");
+    if (!key) return 0;
+    val = strchr(key, ':');
+    if (!val) return 0;
+    val = utax__skip_ws(val + 1);
+    if (!val || *val != '"') return 0;
+    val++;
+
+    while (val[i] && val[i] != '"') {
+        unsigned char c = (unsigned char)val[i];
+        if (!isupper(c)) return 0;
+        if (i + 1 >= out_ccy_sz) return 0;
+        out_ccy[i] = (char)c;
+        i++;
+    }
+
+    if (val[i] != '"' || i == 0) return 0;
+    out_ccy[i] = '\0';
+    return 1;
+}
+
+static int utax__extract_ecb_value(const char *json, double *out_value) {
+    const char *p = NULL;
+    char *end = NULL;
+
+    if (!json || !out_value) return 0;
+    p = strstr(json, "\"value\":");
+    if (!p) return 0;
+    p += 8;
+    p = utax__skip_ws(p);
+    if (!p || !*p) return 0;
+    if (*p == '"') p++;
+
+    *out_value = strtod(p, &end);
+    if (end == p) return 0;
+    return *out_value > 0.0;
+}
+
 static utax_rc utax__fetch_url_text(const char *url, char *out_buf, size_t out_cap, size_t *out_len) {
     FILE *pipe = NULL;
     size_t total = 0;
@@ -204,6 +254,36 @@ static utax_rc utax__fetch_url_text(const char *url, char *out_buf, size_t out_c
     return UTAX_OK;
 }
 
+static int utax__fetch_conversion_rate_eur(const char *currency, double *out_rate) {
+    char url[UTAX_MARKET_URL_MAX];
+    char json_buf[UTAX_MARKET_JSON_MAX];
+    size_t json_len = 0;
+    utax_rc rc = UTAX_OK;
+    double v = 0.0;
+
+    if (!currency || !out_rate) return 0;
+    if (strcmp(currency, "EUR") == 0) {
+        *out_rate = 1.0;
+        return 1;
+    }
+
+    if (snprintf(
+            url,
+            sizeof(url),
+            "https://data-api.ecb.europa.eu/service/data/EXR/D.%s.EUR.SP00.A?lastNObservations=1&format=jsondata",
+            currency
+        ) >= (int)sizeof(url)) {
+        return 0;
+    }
+
+    rc = utax__fetch_url_text(url, json_buf, sizeof(json_buf), &json_len);
+    if (rc != UTAX_OK || json_len == 0) return 0;
+    if (!utax__extract_ecb_value(json_buf, &v)) return 0;
+
+    *out_rate = v;
+    return 1;
+}
+
 utax_rc utax_market_data_lookup_yahoo_date_from_json(
     const char *ticker,
     const char *date_yyyy_mm_dd,
@@ -226,8 +306,10 @@ utax_rc utax_market_data_lookup_yahoo_date_from_json(
     (void)snprintf(out_quote->ticker, sizeof(out_quote->ticker), "%s", ticker);
     (void)snprintf(out_quote->date_yyyy_mm_dd, sizeof(out_quote->date_yyyy_mm_dd), "%s", date_yyyy_mm_dd);
     out_quote->dividend_status = UTAX_MARKET_DIVIDEND_NOT_REQUESTED;
+    out_quote->has_conversion_rate_eur = 0;
 
     if (!strstr(yahoo_chart_json, "\"chart\"")) return UTAX_ERR_PARSE;
+    (void)utax__extract_meta_currency(yahoo_chart_json, out_quote->currency, sizeof(out_quote->currency));
 
     if (!utax__extract_array_value(yahoo_chart_json, "\"close\":", &close_price, &close_is_null)) {
         return UTAX_ERR_PARSE;
@@ -285,11 +367,22 @@ utax_rc utax_market_data_lookup_yahoo_date(
     if (rc != UTAX_OK) return rc;
     if (json_len == 0) return UTAX_ERR_IO_READ;
 
-    return utax_market_data_lookup_yahoo_date_from_json(
+    rc = utax_market_data_lookup_yahoo_date_from_json(
         ticker,
         date_yyyy_mm_dd,
         include_dividend_yield,
         json_buf,
         out_quote
     );
+    if (rc != UTAX_OK) return rc;
+
+    if (out_quote->currency[0]) {
+        double conversion_rate_eur = 0.0;
+        if (utax__fetch_conversion_rate_eur(out_quote->currency, &conversion_rate_eur)) {
+            out_quote->conversion_rate_eur = conversion_rate_eur;
+            out_quote->has_conversion_rate_eur = 1;
+        }
+    }
+
+    return UTAX_OK;
 }

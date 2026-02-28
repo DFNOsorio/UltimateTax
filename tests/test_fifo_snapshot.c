@@ -107,10 +107,16 @@ utax_rc utax_market_data_lookup_yahoo_date(
     UTAX_STRNCPY(out_quote->date_yyyy_mm_dd, sizeof(out_quote->date_yyyy_mm_dd), date_yyyy_mm_dd);
 
     if (strcmp(ticker, "AAPL") == 0) {
+        UTAX_STRNCPY(out_quote->currency, sizeof(out_quote->currency), "USD");
+        out_quote->conversion_rate_eur = 1.0;
+        out_quote->has_conversion_rate_eur = 1;
         out_quote->close_price = 201.25;
         return UTAX_OK;
     }
     if (strcmp(ticker, "MSFT") == 0) {
+        UTAX_STRNCPY(out_quote->currency, sizeof(out_quote->currency), "USD");
+        out_quote->conversion_rate_eur = 1.0;
+        out_quote->has_conversion_rate_eur = 1;
         out_quote->close_price = 410.75;
         return UTAX_OK;
     }
@@ -264,7 +270,9 @@ int main(int argc, char **argv) {
         }
         for (size_t i = 0; i < out_n; ++i) {
             assert(rows[i].last_updated_stock_price >= 0.0);
-            assert(rows[i].current_lot_value_eur == rows[i].qty_remaining * rows[i].last_updated_stock_price);
+            assert(rows[i].last_updated_stock_conversion_rate_eur > 0.0);
+            assert(rows[i].current_lot_value_eur ==
+                   rows[i].qty_remaining * (rows[i].last_updated_stock_price / rows[i].last_updated_stock_conversion_rate_eur));
             assert(rows[i].last_price_update_date[0] != '\0');
         }
     }
@@ -324,6 +332,8 @@ int main(int argc, char **argv) {
         upd.cost_per_share_eur = 88.0;
         UTAX_STRNCPY(upd.last_price_update_date, sizeof(upd.last_price_update_date), "2026-01-01 16:00");
         upd.last_updated_stock_price = 111.25;
+        UTAX_STRNCPY(upd.last_updated_stock_currency, sizeof(upd.last_updated_stock_currency), "USD");
+        upd.last_updated_stock_conversion_rate_eur = 1.0;
 
         rc = utax_fifo_snapshot_update_by_id(db, lot_ids[0], &upd);
         if (rc != UTAX_OK) fprintf(stderr, "update failed: %s\n", utax_db_last_error(db));
@@ -343,7 +353,10 @@ int main(int argc, char **argv) {
                 assert(rows[i].cost_per_share_eur == 88.0);
                 assert(strcmp(rows[i].last_price_update_date, "2026-01-01 16:00") == 0);
                 assert(rows[i].last_updated_stock_price == 111.25);
-                assert(rows[i].current_lot_value_eur == rows[i].qty_remaining * rows[i].last_updated_stock_price);
+                assert(strcmp(rows[i].last_updated_stock_currency, "USD") == 0);
+                assert(rows[i].last_updated_stock_conversion_rate_eur == 1.0);
+                assert(rows[i].current_lot_value_eur ==
+                       rows[i].qty_remaining * (rows[i].last_updated_stock_price / rows[i].last_updated_stock_conversion_rate_eur));
             }
         }
         assert(found);
@@ -367,7 +380,9 @@ int main(int argc, char **argv) {
                 found = 1;
                 assert(strcmp(rows[i].last_price_update_date, "2026-02-10") == 0);
                 assert(rows[i].last_updated_stock_price == 410.75);
-                assert(rows[i].current_lot_value_eur == rows[i].qty_remaining * 410.75);
+                assert(strcmp(rows[i].last_updated_stock_currency, "USD") == 0);
+                assert(rows[i].last_updated_stock_conversion_rate_eur == 1.0);
+                assert(rows[i].current_lot_value_eur == rows[i].qty_remaining * (410.75 / 1.0));
             }
         }
         assert(found);
@@ -388,6 +403,8 @@ int main(int argc, char **argv) {
         nomkt.acq_trade_id = inserted[1].acq_trade_id;
         UTAX_STRNCPY(nomkt.last_price_update_date, sizeof(nomkt.last_price_update_date), "2025-02-07 16:00");
         nomkt.last_updated_stock_price = 10.0;
+        UTAX_STRNCPY(nomkt.last_updated_stock_currency, sizeof(nomkt.last_updated_stock_currency), "USD");
+        nomkt.last_updated_stock_conversion_rate_eur = 1.0;
 
         rc = utax_fifo_snapshot_insert(db, &nomkt, &nomkt_lot_id);
         if (rc != UTAX_OK) fprintf(stderr, "insert NOMKT snapshot failed: %s\n", utax_db_last_error(db));
@@ -422,6 +439,8 @@ int main(int argc, char **argv) {
         for (size_t i = 0; i < fn; ++i) {
             assert(strcmp(rows[i].last_price_update_date, "2026-02-10") == 0);
             assert(rows[i].last_updated_stock_price == 201.25);
+            assert(strcmp(rows[i].last_updated_stock_currency, "USD") == 0);
+            assert(rows[i].last_updated_stock_conversion_rate_eur == 1.0);
         }
     }
 
