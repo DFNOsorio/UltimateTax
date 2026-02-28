@@ -75,18 +75,35 @@ typedef struct utax_db_open_opts {
     int busy_timeout_ms;     /* default 5000 */
 } utax_db_open_opts;
 
-/** @brief Returns default values for @ref utax_db_open_opts. */
+/**
+ * @brief Returns default values for @ref utax_db_open_opts.
+ * @return Default-initialized open options.
+ */
 UTAX_API utax_db_open_opts utax_db_open_opts_default(void);
 
-/** @brief Opens a database at the given filesystem path. */
+/**
+ * @brief Opens a database at the given filesystem path.
+ * @param path UTF-8 filesystem path to the SQLite database file.
+ * @param opts Optional open options; pass NULL to use defaults.
+ * @param out_db Output pointer that receives the opened handle on success.
+ * @return @ref UTAX_OK on success, otherwise an error code.
+ */
 UTAX_API utax_rc utax_db_open(const char *path,
                               const utax_db_open_opts *opts,
                               utax_db_t **out_db);
 
-/** @brief Closes an open database handle. */
+/**
+ * @brief Closes an open database handle.
+ * @param db Database handle previously returned by @ref utax_db_open.
+ * @return @ref UTAX_OK on success, otherwise an error code.
+ */
 UTAX_API utax_rc utax_db_close(utax_db_t *db);
 
-/** @brief Returns the last error string owned by the handle. */
+/**
+ * @brief Returns the last error string owned by the handle.
+ * @param db Database handle.
+ * @return Pointer to an internal null-terminated string, or NULL if unavailable.
+ */
 UTAX_API const char *utax_db_last_error(const utax_db_t *db);
 
 

@@ -2,6 +2,7 @@
 #include "utax_schema.h"
 #include "utax_trades.h"
 #include "utax_fifo_snapshot.h"
+#include "utax_market_data.h"
 
 #include "mock_trades.h"
 #include "mock_fifo_snapshot.h"
@@ -88,6 +89,36 @@ static size_t expected_page(size_t total, const utax_fifo_snapshot_filter *f) {
     size_t rem = total - (size_t)offset;
     if (limit < 0) return rem;
     return rem < (size_t)limit ? rem : (size_t)limit;
+}
+
+utax_rc utax_market_data_lookup_yahoo_date(
+    const char *ticker,
+    const char *date_yyyy_mm_dd,
+    int include_dividend_yield,
+    utax_market_quote *out_quote
+) {
+    (void)include_dividend_yield;
+
+    if (!ticker || !date_yyyy_mm_dd || !out_quote) return UTAX_ERR_INVALID_ARG;
+    if (strcmp(date_yyyy_mm_dd, "2026-02-10") != 0) return UTAX_ERR_NOT_FOUND;
+
+    memset(out_quote, 0, sizeof(*out_quote));
+    UTAX_STRNCPY(out_quote->ticker, sizeof(out_quote->ticker), ticker);
+    UTAX_STRNCPY(out_quote->date_yyyy_mm_dd, sizeof(out_quote->date_yyyy_mm_dd), date_yyyy_mm_dd);
+
+    if (strcmp(ticker, "AAPL") == 0) {
+        out_quote->close_price = 201.25;
+        return UTAX_OK;
+    }
+    if (strcmp(ticker, "MSFT") == 0) {
+        out_quote->close_price = 410.75;
+        return UTAX_OK;
+    }
+    if (strcmp(ticker, "NOMKT") == 0) {
+        return UTAX_ERR_NOT_FOUND;
+    }
+
+    return UTAX_ERR_NOT_FOUND;
 }
 
 int main(int argc, char **argv) {
@@ -231,6 +262,11 @@ int main(int argc, char **argv) {
         for (size_t i = 1; i < out_n; ++i) {
             assert(strcmp(rows[i-1].acq_datetime, rows[i].acq_datetime) <= 0);
         }
+        for (size_t i = 0; i < out_n; ++i) {
+            assert(rows[i].last_updated_stock_price >= 0.0);
+            assert(rows[i].current_lot_value_eur == rows[i].qty_remaining * rows[i].last_updated_stock_price);
+            assert(rows[i].last_price_update_date[0] != '\0');
+        }
     }
 
     /* capacity too small */
@@ -286,6 +322,8 @@ int main(int argc, char **argv) {
         utax_fifo_snapshot_row upd = inserted[0];
         upd.qty_remaining = 9.0;
         upd.cost_per_share_eur = 88.0;
+        UTAX_STRNCPY(upd.last_price_update_date, sizeof(upd.last_price_update_date), "2026-01-01 16:00");
+        upd.last_updated_stock_price = 111.25;
 
         rc = utax_fifo_snapshot_update_by_id(db, lot_ids[0], &upd);
         if (rc != UTAX_OK) fprintf(stderr, "update failed: %s\n", utax_db_last_error(db));
@@ -303,9 +341,120 @@ int main(int argc, char **argv) {
                 found = 1;
                 assert(rows[i].qty_remaining == 9.0);
                 assert(rows[i].cost_per_share_eur == 88.0);
+                assert(strcmp(rows[i].last_price_update_date, "2026-01-01 16:00") == 0);
+                assert(rows[i].last_updated_stock_price == 111.25);
+                assert(rows[i].current_lot_value_eur == rows[i].qty_remaining * rows[i].last_updated_stock_price);
             }
         }
         assert(found);
+    }
+
+    /* update one lot using market data by lot_id */
+    {
+        rc = utax_fifo_snapshot_update_price_by_lot_id(db, lot_ids[2], "2026-02-10");
+        if (rc != UTAX_OK) fprintf(stderr, "update_price_by_lot_id failed: %s\n", utax_db_last_error(db));
+        assert(rc == UTAX_OK);
+
+        utax_fifo_snapshot_filter f;
+        memset(&f, 0, sizeof(f));
+        size_t fn = 0, fr = 0;
+        rc = utax_fifo_snapshot_get_filtered(db, &f, rows, 32, &fn, &fr);
+        assert(rc == UTAX_OK);
+
+        int found = 0;
+        for (size_t i = 0; i < fn; ++i) {
+            if (rows[i].lot_id == lot_ids[2]) {
+                found = 1;
+                assert(strcmp(rows[i].last_price_update_date, "2026-02-10") == 0);
+                assert(rows[i].last_updated_stock_price == 410.75);
+                assert(rows[i].current_lot_value_eur == rows[i].qty_remaining * 410.75);
+            }
+        }
+        assert(found);
+    }
+
+    /* update_price_by_lot_id: not found */
+    {
+        rc = utax_fifo_snapshot_update_price_by_lot_id(db, 999999999LL, "2026-02-10");
+        assert(rc == UTAX_ERR_NOT_FOUND);
+    }
+
+    /* add one lot with unavailable market data ticker */
+    long long nomkt_lot_id = 0;
+    {
+        utax_fifo_snapshot_row nomkt = inserted[1];
+        UTAX_STRNCPY(nomkt.ticker, sizeof(nomkt.ticker), "NOMKT");
+        UTAX_STRNCPY(nomkt.acq_datetime, sizeof(nomkt.acq_datetime), "2025-02-07 11:00");
+        nomkt.acq_trade_id = inserted[1].acq_trade_id;
+        UTAX_STRNCPY(nomkt.last_price_update_date, sizeof(nomkt.last_price_update_date), "2025-02-07 16:00");
+        nomkt.last_updated_stock_price = 10.0;
+
+        rc = utax_fifo_snapshot_insert(db, &nomkt, &nomkt_lot_id);
+        if (rc != UTAX_OK) fprintf(stderr, "insert NOMKT snapshot failed: %s\n", utax_db_last_error(db));
+        assert(rc == UTAX_OK);
+        assert(nomkt_lot_id > 0);
+
+        rc = utax_fifo_snapshot_update_price_by_lot_id(db, nomkt_lot_id, "2026-02-10");
+        assert(rc == UTAX_ERR_NOT_FOUND);
+    }
+
+    /* update all lots for ticker */
+    {
+        size_t updated = 0;
+        size_t unavailable = 0;
+
+        rc = utax_fifo_snapshot_update_prices_by_ticker(db, "AAPL", "2026-02-10", &updated, &unavailable);
+        if (rc != UTAX_OK) fprintf(stderr, "update_prices_by_ticker(AAPL) failed: %s\n", utax_db_last_error(db));
+        assert(rc == UTAX_OK);
+        assert(updated == 2);
+        assert(unavailable == 0);
+
+        utax_fifo_snapshot_filter f;
+        memset(&f, 0, sizeof(f));
+        f.has_ticker = 1;
+        UTAX_STRNCPY(f.ticker, sizeof(f.ticker), "AAPL");
+
+        size_t fn = 0, fr = 0;
+        rc = utax_fifo_snapshot_get_filtered(db, &f, rows, 32, &fn, &fr);
+        assert(rc == UTAX_OK);
+        assert(fn == 2);
+
+        for (size_t i = 0; i < fn; ++i) {
+            assert(strcmp(rows[i].last_price_update_date, "2026-02-10") == 0);
+            assert(rows[i].last_updated_stock_price == 201.25);
+        }
+    }
+
+    /* update_prices_by_ticker: unavailable market data handled gracefully */
+    {
+        size_t updated = 0;
+        size_t unavailable = 0;
+
+        rc = utax_fifo_snapshot_update_prices_by_ticker(db, "NOMKT", "2026-02-10", &updated, &unavailable);
+        assert(rc == UTAX_OK);
+        assert(updated == 0);
+        assert(unavailable == 1);
+    }
+
+    /* paged mass update */
+    {
+        utax_fifo_snapshot_filter f;
+        memset(&f, 0, sizeof(f));
+        f.has_limit = 1;
+        f.limit = 10;
+        f.has_offset = 1;
+        f.offset = 0;
+
+        size_t processed = 0;
+        size_t updated = 0;
+        size_t unavailable = 0;
+
+        rc = utax_fifo_snapshot_update_prices_paged(db, "2026-02-10", &f, &processed, &updated, &unavailable);
+        if (rc != UTAX_OK) fprintf(stderr, "update_prices_paged failed: %s\n", utax_db_last_error(db));
+        assert(rc == UTAX_OK);
+        assert(processed == 4);
+        assert(updated == 3);
+        assert(unavailable == 1);
     }
 
     /* update non-existent */

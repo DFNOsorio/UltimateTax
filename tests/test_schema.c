@@ -60,6 +60,26 @@ static int sqlite_table_exists(sqlite3 *db, const char *name) {
     return exists;
 }
 
+static int sqlite_column_exists(sqlite3 *db, const char *table_name, const char *column_name) {
+    const char *sql =
+        "SELECT 1 FROM pragma_table_xinfo(?1) WHERE name=?2 LIMIT 1;";
+
+    sqlite3_stmt *st = NULL;
+    int rc = sqlite3_prepare_v2(db, sql, -1, &st, NULL);
+    assert(rc == SQLITE_OK);
+
+    rc = sqlite3_bind_text(st, 1, table_name, -1, SQLITE_STATIC);
+    assert(rc == SQLITE_OK);
+    rc = sqlite3_bind_text(st, 2, column_name, -1, SQLITE_STATIC);
+    assert(rc == SQLITE_OK);
+
+    rc = sqlite3_step(st);
+    int exists = (rc == SQLITE_ROW);
+
+    sqlite3_finalize(st);
+    return exists;
+}
+
 static sqlite3 *sqlite_open_check(const char *path) {
     sqlite3 *db = NULL;
     int rc = sqlite3_open_v2(path, &db, SQLITE_OPEN_READWRITE, NULL);
@@ -71,6 +91,9 @@ static sqlite3 *sqlite_open_check(const char *path) {
 static void expect_core_tables_exist(sqlite3 *db) {
     assert(sqlite_table_exists(db, "trades"));
     assert(sqlite_table_exists(db, "fifo_snapshot"));
+    assert(sqlite_column_exists(db, "fifo_snapshot", "last_price_update_date"));
+    assert(sqlite_column_exists(db, "fifo_snapshot", "last_updated_stock_price"));
+    assert(sqlite_column_exists(db, "fifo_snapshot", "current_lot_value_eur"));
     assert(sqlite_table_exists(db, "fifo_realized"));
     assert(sqlite_table_exists(db, "dividends"));
     assert(sqlite_table_exists(db, "options_operations"));

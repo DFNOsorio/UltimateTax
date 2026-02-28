@@ -1,7 +1,19 @@
--- db/schema.sql
--- ─────────────────────────────────────────────────────────────────────────────
+-- ============================================================================
+-- UltimateTax portfolio schema (SQLite)
+--
+-- Documentation style:
+-- - Each section starts with purpose + key constraints.
+-- - Index comments explain the query pattern they optimize.
+-- - ISO datetime columns use text format checks where relevant.
+-- ============================================================================
+
+-- ============================================================================
 -- trades
--- ─────────────────────────────────────────────────────────────────────────────
+-- Purpose: Raw imported trade operations (BUY/SELL).
+-- Notes:
+-- - `trade_year` is a STORED generated column for year filters and aggregates.
+-- - `trade_datetime` uses format `YYYY-MM-DD HH:MM`.
+-- ============================================================================
 
 CREATE TABLE IF NOT EXISTS trades (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -40,21 +52,21 @@ CREATE TABLE IF NOT EXISTS trades (
     )
 );
 
--- Helpful indexes
+-- Indexes for trade timelines and year-based filters.
 
--- Order everything by time quickly
+-- Global timeline scans.
 CREATE INDEX IF NOT EXISTS idx_trades_datetime
     ON trades(trade_datetime, id);
 
--- Per-ticker queries in time order
+-- Per-ticker timeline scans.
 CREATE INDEX IF NOT EXISTS idx_trades_ticker_datetime
     ON trades(ticker, trade_datetime, id);
 
--- Per-broker + ticker queries in time order
+-- Broker + ticker timeline scans.
 CREATE INDEX IF NOT EXISTS idx_trades_broker_ticker_datetime
     ON trades(broker, ticker, trade_datetime, id);
 
--- Fast year aggregates / filters
+-- Year aggregate/filter paths.
 CREATE INDEX IF NOT EXISTS idx_trades_year
     ON trades(trade_year);
 
@@ -65,9 +77,13 @@ CREATE INDEX IF NOT EXISTS idx_trades_year_broker_ticker
     ON trades(trade_year, broker, ticker);
 
 
--- ─────────────────────────────────────────────────────────────────────────────
+-- ============================================================================
 -- fifo_snapshot
--- ─────────────────────────────────────────────────────────────────────────────
+-- Purpose: Open FIFO lots carried at year end / current state.
+-- Notes:
+-- - One row per open lot with acquisition linkage to `trades`.
+-- - `current_lot_value_eur` is a VIRTUAL generated value.
+-- ============================================================================
 
 CREATE TABLE IF NOT EXISTS fifo_snapshot (
     lot_id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -85,6 +101,11 @@ CREATE TABLE IF NOT EXISTS fifo_snapshot (
     qty_remaining       REAL NOT NULL CHECK (qty_remaining >= 0.0),
     cost_per_share_eur  REAL NOT NULL CHECK (cost_per_share_eur >= 0.0),
     acq_commission_eur  REAL NOT NULL DEFAULT 0.0 CHECK (acq_commission_eur >= 0.0),
+    last_price_update_date TEXT NOT NULL DEFAULT '',
+    last_updated_stock_price REAL NOT NULL DEFAULT 0.0 CHECK (last_updated_stock_price >= 0.0),
+    current_lot_value_eur REAL GENERATED ALWAYS AS (
+        COALESCE(qty_remaining, 0.0) * COALESCE(last_updated_stock_price, 0.0)
+    ) VIRTUAL,
 
     -- Metadata
     country             TEXT NOT NULL,
@@ -92,11 +113,21 @@ CREATE TABLE IF NOT EXISTS fifo_snapshot (
     FOREIGN KEY (acq_trade_id) REFERENCES trades(id)
 );
 
+-- Main listing path: broker/year/ticker ordered by acquisition time.
 CREATE INDEX IF NOT EXISTS idx_fifo_snapshot_broker_year_ticker
 ON fifo_snapshot(broker, tax_year, ticker, acq_datetime, lot_id);
 
+-- Fast reverse lookup from acquisition trade to lot.
 CREATE INDEX IF NOT EXISTS idx_fifo_snapshot_acq_trade
 ON fifo_snapshot(acq_trade_id);
+
+
+-- ============================================================================
+-- fifo_snapshot_action_applied
+-- Purpose: Many-to-many link of snapshot lots to corporate actions already applied.
+-- Notes:
+-- - Composite primary key prevents duplicate application of the same action to a lot.
+-- ============================================================================
 
 CREATE TABLE IF NOT EXISTS fifo_snapshot_action_applied (
     lot_id       INTEGER NOT NULL,
@@ -108,14 +139,18 @@ CREATE TABLE IF NOT EXISTS fifo_snapshot_action_applied (
     FOREIGN KEY (action_id) REFERENCES corporate_actions(action_id)
 );
 
+-- Action-centric traversal of applied lots.
 CREATE INDEX IF NOT EXISTS idx_fifo_snapshot_action_applied_action
 ON fifo_snapshot_action_applied(action_id, lot_id);
 
 
-
--- ─────────────────────────────────────────────────────────────────────────────
+-- ============================================================================
 -- fifo_realized
--- ─────────────────────────────────────────────────────────────────────────────
+-- Purpose: Realized FIFO matches between SELL and BUY lots.
+-- Notes:
+-- - `gain_eur` is a VIRTUAL generated value.
+-- - `(sell_trade_id, match_seq)` enforces deterministic match ordering.
+-- ============================================================================
 
 CREATE TABLE IF NOT EXISTS fifo_realized (
     realized_id        INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -153,19 +188,26 @@ CREATE TABLE IF NOT EXISTS fifo_realized (
     UNIQUE (sell_trade_id, match_seq)
 );
 
+-- Broker/year totals.
 CREATE INDEX IF NOT EXISTS idx_fifo_realized_broker_year
 ON fifo_realized(broker, tax_year);
 
+-- Broker/year/ticker listings in sell order.
 CREATE INDEX IF NOT EXISTS idx_fifo_realized_broker_year_ticker
 ON fifo_realized(broker, tax_year, ticker, sell_datetime, realized_id);
 
+-- Sell-trade reverse lookup.
 CREATE INDEX IF NOT EXISTS idx_fifo_realized_sell_trade
 ON fifo_realized(sell_trade_id);
 
 
--- ─────────────────────────────────────────────────────────────────────────────
+-- ============================================================================
 -- dividends
--- ─────────────────────────────────────────────────────────────────────────────
+-- Purpose: Dividend cashflow rows with derived analytics fields.
+-- Notes:
+-- - `dividend_year` is STORED for filtering.
+-- - `number_of_shares` and `tax_rate` are VIRTUAL computed values.
+-- ============================================================================
 
 CREATE TABLE IF NOT EXISTS dividends (
     dividend_id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -200,11 +242,21 @@ CREATE TABLE IF NOT EXISTS dividends (
     conversion_rate_eur REAL NOT NULL CHECK (conversion_rate_eur > 0.0)
 );
 
+-- Dividend listings by year and broker/year.
 CREATE INDEX IF NOT EXISTS idx_div_year
 ON dividends(dividend_year, dividend_dt, dividend_id);
 
 CREATE INDEX IF NOT EXISTS idx_div_broker_year
 ON dividends(broker, dividend_year, dividend_dt, dividend_id);
+
+
+-- ============================================================================
+-- options_operations
+-- Purpose: Options operations used for tax reporting flows.
+-- Notes:
+-- - `bought_year` is STORED for yearly filtering.
+-- - Datetime format checks enforce `YYYY-MM-DD HH:MM`.
+-- ============================================================================
 
 CREATE TABLE IF NOT EXISTS options_operations (
     option_id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -242,6 +294,7 @@ CREATE TABLE IF NOT EXISTS options_operations (
     )
 );
 
+-- Timeline + broker/year/ticker query accelerators.
 CREATE INDEX IF NOT EXISTS idx_options_bought_dt
 ON options_operations(bought_dt, option_id);
 
@@ -259,6 +312,15 @@ ON options_operations(bought_year, broker);
 
 CREATE INDEX IF NOT EXISTS idx_options_year_broker_ticker
 ON options_operations(bought_year, broker, ticker);
+
+
+-- ============================================================================
+-- corporate_actions
+-- Purpose: Corporate action history used to transform lots and symbols.
+-- Notes:
+-- - `action_year` and `ratio` are STORED generated fields.
+-- - SPLIT requires `to_ticker` = NULL; other action types require non-NULL.
+-- ============================================================================
 
 CREATE TABLE IF NOT EXISTS corporate_actions (
     action_id     INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -284,14 +346,14 @@ CREATE TABLE IF NOT EXISTS corporate_actions (
     ratio         REAL
                  GENERATED ALWAYS AS (to_qty / from_qty) STORED,
 
-    -- structural checks
+    -- Structural checks
     CHECK (
         length(action_date) = 10
         AND substr(action_date, 5, 1) = '-'
         AND substr(action_date, 8, 1) = '-'
     ),
 
-    -- enforce to_ticker NULL only for SPLIT
+    -- Enforce to_ticker NULL only for SPLIT
     CHECK (
         (action_type = 'SPLIT' AND to_ticker IS NULL)
         OR
@@ -299,7 +361,7 @@ CREATE TABLE IF NOT EXISTS corporate_actions (
     )
 );
 
--- Useful indexes
+-- Corporate action lookup indexes.
 CREATE INDEX IF NOT EXISTS idx_ca_broker_date
 ON corporate_actions(broker, action_date, action_id);
 

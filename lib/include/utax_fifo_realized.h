@@ -39,7 +39,13 @@ typedef struct utax_fifo_realized_filter {
 } utax_fifo_realized_filter;
 
 /* CRUD */
-/** @brief Inserts one FIFO realized row. */
+/**
+ * @brief Inserts one FIFO realized row.
+ * @param db Open database handle.
+ * @param row Row payload to insert.
+ * @param out_realized_id Optional output for inserted row id.
+ * @return @ref UTAX_OK on success, otherwise an error code.
+ */
 UTAX_API utax_rc utax_fifo_realized_insert(utax_db_t *db, const utax_fifo_realized_row *row, long long *out_realized_id);
 
 /* NEW: Batch insert
@@ -48,29 +54,73 @@ UTAX_API utax_rc utax_fifo_realized_insert(utax_db_t *db, const utax_fifo_realiz
    - On failure: ROLLBACK; returns error; sets *out_inserted = rows processed before failure.
      NOTE: due to rollback, DB contains NONE of the batch rows.
 */
-/** @brief Inserts many FIFO realized rows in a single transaction. */
+/**
+ * @brief Inserts many FIFO realized rows in a single transaction.
+ * @param db Open database handle.
+ * @param rows Rows to insert.
+ * @param n Number of elements in @p rows.
+ * @param out_inserted Optional output for processed row count.
+ * @return @ref UTAX_OK on success, otherwise an error code.
+ */
 UTAX_API utax_rc utax_fifo_realized_insert_many(utax_db_t *db,
                                                 utax_fifo_realized_row *rows,
                                                 size_t n,
                                                 size_t *out_inserted);
 
-/** @brief Updates a FIFO realized row by primary key. */
+/**
+ * @brief Updates a FIFO realized row by primary key.
+ * @param db Open database handle.
+ * @param realized_id Primary key of the row to update.
+ * @param row Replacement row data.
+ * @return @ref UTAX_OK on success, otherwise an error code.
+ */
 UTAX_API utax_rc utax_fifo_realized_update_by_id(utax_db_t *db, long long realized_id, const utax_fifo_realized_row *row);
-/** @brief Deletes a FIFO realized row by primary key. */
+/**
+ * @brief Deletes a FIFO realized row by primary key.
+ * @param db Open database handle.
+ * @param realized_id Primary key of the row to delete.
+ * @return @ref UTAX_OK on success, otherwise an error code.
+ */
 UTAX_API utax_rc utax_fifo_realized_delete_by_id(utax_db_t *db, long long realized_id);
 
 /* Counts */
-/** @brief Counts all FIFO realized rows. */
+/**
+ * @brief Counts all FIFO realized rows.
+ * @param db Open database handle.
+ * @param out_count Output total row count.
+ * @return @ref UTAX_OK on success, otherwise an error code.
+ */
 UTAX_API utax_rc utax_fifo_realized_count_total(utax_db_t *db, long long *out_count);
-/** @brief Counts rows matching filters, ignoring pagination fields. */
+/**
+ * @brief Counts rows matching filters, ignoring pagination fields.
+ * @param db Open database handle.
+ * @param f Optional filter criteria.
+ * @param out_count Output matching row count.
+ * @return @ref UTAX_OK on success, otherwise an error code.
+ */
 UTAX_API utax_rc utax_fifo_realized_count_filtered(utax_db_t *db, const utax_fifo_realized_filter *f, long long *out_count); /* ignores pagination */
-/** @brief Counts rows matching filters with pagination applied. */
+/**
+ * @brief Counts rows matching filters with pagination applied.
+ * @param db Open database handle.
+ * @param f Optional filter criteria including pagination.
+ * @param out_count Output paged row count.
+ * @return @ref UTAX_OK on success, otherwise an error code.
+ */
 UTAX_API utax_rc utax_fifo_realized_count_page(utax_db_t *db, const utax_fifo_realized_filter *f, long long *out_count);     /* applies pagination */
 
 /* Query rows (paged)
    - Capacity check is against page size.
 */
-/** @brief Fetches filtered FIFO realized rows into a preallocated output buffer. */
+/**
+ * @brief Fetches filtered FIFO realized rows into a preallocated output buffer.
+ * @param db Open database handle.
+ * @param f Optional filter criteria including pagination.
+ * @param out_rows Output buffer for fetched rows.
+ * @param out_cap Capacity of @p out_rows in elements.
+ * @param out_count Output number of written rows.
+ * @param out_required Optional output required capacity when @p out_cap is insufficient.
+ * @return @ref UTAX_OK on success, otherwise an error code.
+ */
 UTAX_API utax_rc utax_fifo_realized_get_filtered(utax_db_t *db,
                                                  const utax_fifo_realized_filter *f,
                                                  utax_fifo_realized_row *out_rows,

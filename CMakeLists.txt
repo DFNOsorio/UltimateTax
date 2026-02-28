@@ -34,6 +34,7 @@ add_library(ultimateTax STATIC
   lib/src/utax_schema.c
   lib/src/utax_trades.c
   lib/src/utax_dividends.c
+  lib/src/utax_market_data.c
   lib/src/utax_options.c
   lib/src/utax_fifo_snapshot.c
   lib/src/utax_fifo_snapshot_action_applied.c
@@ -70,6 +71,20 @@ endif()
 if(UTAX_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
+
+    add_executable(utax_test_market_data
+      tests/test_market_data.c
+    )
+    target_link_libraries(utax_test_market_data PRIVATE ultimateTax)
+
+    if(MSVC)
+        target_compile_options(utax_test_market_data PRIVATE /W4 /permissive- /wd4100 /wd4189)
+        target_compile_definitions(utax_test_market_data PRIVATE _CRT_SECURE_NO_WARNINGS)
+    else()
+        target_compile_options(utax_test_market_data PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+
+    add_test(NAME utax_test_market_data COMMAND $<TARGET_FILE:utax_test_market_data>)
 endif()
 
 # ---- Staging rules (zip-ready layout under ${CMAKE_INSTALL_PREFIX}) ----

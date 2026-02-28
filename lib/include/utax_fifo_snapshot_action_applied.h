@@ -26,13 +26,25 @@ typedef struct utax_fifo_snapshot_action_applied_filter {
 } utax_fifo_snapshot_action_applied_filter;
 
 /* CRUD */
-/** @brief Insert one snapshot/action-applied row. */
+/**
+ * @brief Inserts one snapshot/action-applied row.
+ * @param db Open database handle.
+ * @param row Row payload to insert.
+ * @return @ref UTAX_OK on success, otherwise an error code.
+ */
 UTAX_API utax_rc utax_fifo_snapshot_action_applied_insert(
     utax_db_t *db,
     const utax_fifo_snapshot_action_applied_row *row
 );
 
-/** @brief Insert multiple snapshot/action-applied rows. */
+/**
+ * @brief Inserts multiple snapshot/action-applied rows.
+ * @param db Open database handle.
+ * @param rows Rows to insert.
+ * @param n Number of elements in @p rows.
+ * @param out_inserted Optional output for inserted row count.
+ * @return @ref UTAX_OK on success, otherwise an error code.
+ */
 UTAX_API utax_rc utax_fifo_snapshot_action_applied_insert_many(
     utax_db_t *db,
     utax_fifo_snapshot_action_applied_row *rows,
@@ -40,7 +52,14 @@ UTAX_API utax_rc utax_fifo_snapshot_action_applied_insert_many(
     size_t *out_inserted
 );
 
-/** @brief Update a row identified by composite keys. */
+/**
+ * @brief Updates a row identified by composite keys.
+ * @param db Open database handle.
+ * @param lot_id Existing lot id key.
+ * @param action_id Existing action id key.
+ * @param row Replacement row data.
+ * @return @ref UTAX_OK on success, otherwise an error code.
+ */
 UTAX_API utax_rc utax_fifo_snapshot_action_applied_update_by_keys(
     utax_db_t *db,
     long long lot_id,
@@ -48,7 +67,13 @@ UTAX_API utax_rc utax_fifo_snapshot_action_applied_update_by_keys(
     const utax_fifo_snapshot_action_applied_row *row
 );
 
-/** @brief Delete a row identified by composite keys. */
+/**
+ * @brief Deletes a row identified by composite keys.
+ * @param db Open database handle.
+ * @param lot_id Existing lot id key.
+ * @param action_id Existing action id key.
+ * @return @ref UTAX_OK on success, otherwise an error code.
+ */
 UTAX_API utax_rc utax_fifo_snapshot_action_applied_delete_by_keys(
     utax_db_t *db,
     long long lot_id,
@@ -56,20 +81,37 @@ UTAX_API utax_rc utax_fifo_snapshot_action_applied_delete_by_keys(
 );
 
 /* Counts */
-/** @brief Count all snapshot/action-applied rows. */
+/**
+ * @brief Counts all snapshot/action-applied rows.
+ * @param db Open database handle.
+ * @param out_count Output total row count.
+ * @return @ref UTAX_OK on success, otherwise an error code.
+ */
 UTAX_API utax_rc utax_fifo_snapshot_action_applied_count_total(
     utax_db_t *db,
     long long *out_count
 );
 
-/** @brief Count rows matching a filter. */
+/**
+ * @brief Counts rows matching a filter.
+ * @param db Open database handle.
+ * @param f Optional filter criteria.
+ * @param out_count Output matching row count.
+ * @return @ref UTAX_OK on success, otherwise an error code.
+ */
 UTAX_API utax_rc utax_fifo_snapshot_action_applied_count_filtered(
     utax_db_t *db,
     const utax_fifo_snapshot_action_applied_filter *f,
     long long *out_count
 );
 
-/** @brief Count rows returned by the current page settings in a filter. */
+/**
+ * @brief Counts rows returned by the current page settings in a filter.
+ * @param db Open database handle.
+ * @param f Optional filter criteria including pagination.
+ * @param out_count Output paged row count.
+ * @return @ref UTAX_OK on success, otherwise an error code.
+ */
 UTAX_API utax_rc utax_fifo_snapshot_action_applied_count_page(
     utax_db_t *db,
     const utax_fifo_snapshot_action_applied_filter *f,
@@ -77,7 +119,16 @@ UTAX_API utax_rc utax_fifo_snapshot_action_applied_count_page(
 );
 
 /* Query rows (paged) */
-/** @brief Fetch paged rows matching a filter. */
+/**
+ * @brief Fetches paged rows matching a filter.
+ * @param db Open database handle.
+ * @param f Optional filter criteria including pagination.
+ * @param out_rows Output buffer for fetched rows.
+ * @param out_cap Capacity of @p out_rows in elements.
+ * @param out_count Output number of written rows.
+ * @param out_required Optional output required capacity when @p out_cap is insufficient.
+ * @return @ref UTAX_OK on success, otherwise an error code.
+ */
 UTAX_API utax_rc utax_fifo_snapshot_action_applied_get_filtered(
     utax_db_t *db,
     const utax_fifo_snapshot_action_applied_filter *f,

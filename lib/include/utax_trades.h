@@ -33,51 +33,115 @@ typedef struct utax_trades_filter {
     int offset;
 } utax_trades_filter;
 
-/** @brief Parse a CSV file and append parsed trade rows to a dynamic array. */
+/**
+ * @brief Parses a CSV file and appends parsed trade rows to a dynamic array.
+ * @param path CSV file path.
+ * @param inout_rows In/out pointer to row-array pointer; may be reallocated.
+ * @param inout_total_elems In/out total element count for @p inout_rows.
+ * @return @ref UTAX_OK on success, otherwise an error code.
+ */
 UTAX_API utax_rc utax_trades_parse_csv_file(
     const char *path,
     utax_trades_row **inout_rows,
     size_t *inout_total_elems
 );
 
-/** @brief Free a trade-row array allocated by parsing/query helpers. */
+/**
+ * @brief Frees a trade-row array allocated by parsing/query helpers.
+ * @param inout_rows In/out pointer to row-array pointer; set to NULL on return.
+ * @param inout_total_elems In/out pointer to element count; set to 0 on return.
+ */
 UTAX_API void utax_trades_free_rows(
     utax_trades_row **inout_rows,
     size_t *inout_total_elems
 );
 
 /* CRUD */
-/** @brief Insert one trade row. */
+/**
+ * @brief Inserts one trade row.
+ * @param db Open database handle.
+ * @param row Row payload to insert.
+ * @param out_id Optional output for inserted row id.
+ * @return @ref UTAX_OK on success, otherwise an error code.
+ */
 UTAX_API utax_rc utax_trades_insert(utax_db_t *db, const utax_trades_row *row, long long *out_id);
-/** @brief Insert multiple trade rows. */
+/**
+ * @brief Inserts multiple trade rows.
+ * @param db Open database handle.
+ * @param rows Rows to insert.
+ * @param n Number of elements in @p rows.
+ * @param out_inserted Optional output for inserted row count.
+ * @return @ref UTAX_OK on success, otherwise an error code.
+ */
 UTAX_API utax_rc utax_trades_insert_many(utax_db_t *db,
                                          utax_trades_row *rows,
                                          size_t n,
                                          size_t *out_inserted);
-/** @brief Insert multiple trade rows from an in-memory array. */
+/**
+ * @brief Inserts multiple trade rows from an in-memory array.
+ * @param db Open database handle.
+ * @param rows Rows to insert.
+ * @param n Number of elements in @p rows.
+ * @param out_inserted Optional output for inserted row count.
+ * @return @ref UTAX_OK on success, otherwise an error code.
+ */
 UTAX_API utax_rc utax_trades_insert_many_array(
     utax_db_t *db,
     utax_trades_row *rows,
     size_t n,
     size_t *out_inserted
 );
-/** @brief Parse and insert trade rows from a CSV file. */
+/**
+ * @brief Parses and inserts trade rows from a CSV file.
+ * @param db Open database handle.
+ * @param path CSV file path.
+ * @param out_inserted Optional output for inserted row count.
+ * @return @ref UTAX_OK on success, otherwise an error code.
+ */
 UTAX_API utax_rc utax_trades_insert_many_from_csv_file(
     utax_db_t *db,
     const char *path,
     size_t *out_inserted
 );
-/** @brief Update a trade row by primary key id. */
+/**
+ * @brief Updates a trade row by primary key id.
+ * @param db Open database handle.
+ * @param id Primary key of the row to update.
+ * @param row Replacement row data.
+ * @return @ref UTAX_OK on success, otherwise an error code.
+ */
 UTAX_API utax_rc utax_trades_update_by_id(utax_db_t *db, long long id, const utax_trades_row *row);
-/** @brief Delete a trade row by primary key id. */
+/**
+ * @brief Deletes a trade row by primary key id.
+ * @param db Open database handle.
+ * @param id Primary key of the row to delete.
+ * @return @ref UTAX_OK on success, otherwise an error code.
+ */
 UTAX_API utax_rc utax_trades_delete_by_id(utax_db_t *db, long long id);
 
 /* Counts */
-/** @brief Count all trades. */
+/**
+ * @brief Counts all trades.
+ * @param db Open database handle.
+ * @param out_count Output total row count.
+ * @return @ref UTAX_OK on success, otherwise an error code.
+ */
 UTAX_API utax_rc utax_trades_count_total(utax_db_t *db, long long *out_count);
-/** @brief Count trades matching a filter. */
+/**
+ * @brief Counts trades matching a filter.
+ * @param db Open database handle.
+ * @param f Optional filter criteria.
+ * @param out_count Output matching row count.
+ * @return @ref UTAX_OK on success, otherwise an error code.
+ */
 UTAX_API utax_rc utax_trades_count_filtered(utax_db_t *db, const utax_trades_filter *f, long long *out_count);
-/** @brief Count trades in the current filter page. */
+/**
+ * @brief Counts trades in the current filter page.
+ * @param db Open database handle.
+ * @param f Optional filter criteria including pagination.
+ * @param out_count Output paged row count.
+ * @return @ref UTAX_OK on success, otherwise an error code.
+ */
 UTAX_API utax_rc utax_trades_count_page(utax_db_t *db, const utax_trades_filter *f, long long *out_count);
 
 /* Query rows
@@ -85,7 +149,16 @@ UTAX_API utax_rc utax_trades_count_page(utax_db_t *db, const utax_trades_filter 
    - If results > out_cap, returns UTAX_ERR_NO_SPACE and writes required into out_required (if non-NULL).
    - On success, out_count receives the number of rows written.
 */
-/** @brief Fetch paged trade rows matching a filter. */
+/**
+ * @brief Fetches paged trade rows matching a filter.
+ * @param db Open database handle.
+ * @param f Optional filter criteria including pagination.
+ * @param out_rows Output buffer for fetched rows.
+ * @param out_cap Capacity of @p out_rows in elements.
+ * @param out_count Output number of written rows.
+ * @param out_required Optional output required capacity when @p out_cap is insufficient.
+ * @return @ref UTAX_OK on success, otherwise an error code.
+ */
 UTAX_API utax_rc utax_trades_get_filtered(utax_db_t *db,
                                           const utax_trades_filter *f,
                                           utax_trades_row *out_rows,

@@ -51,12 +51,15 @@ typedef struct utax_fifo_snapshot_row {
     double qty_remaining;
     double cost_per_share_eur;
     double acq_commission_eur;
+    double last_updated_stock_price;
+    double current_lot_value_eur; /* generated in DB, but convenient to return */
 
     int tax_year;
 
     char broker[UTAX_BROKER_MAX];
     char ticker[UTAX_TICKER_MAX];
     char acq_datetime[UTAX_DT_MAX];
+    char last_price_update_date[UTAX_DT_MAX];
     char country[UTAX_COUNTRY_MAX];
 } utax_fifo_snapshot_row;
 
@@ -145,18 +148,42 @@ typedef struct utax_corporate_actions_row {
     char to_ticker[UTAX_TICKER_MAX];                 /* "" when NULL in DB (SPLIT) */
 } utax_corporate_actions_row;
 
-/** @brief Apply schema SQL from file to the current database. */
+/**
+ * @brief Applies schema SQL from file to the current database.
+ * @param db Open database handle.
+ * @param schema_sql_path UTF-8 path to a SQL script file.
+ * @return @ref UTAX_OK on success, otherwise an error code.
+ */
 utax_rc utax_schema_apply_from_file(utax_db_t *db, const char *schema_sql_path);
 
-/** @brief Drop all schema objects managed by this project. */
+/**
+ * @brief Drops all schema objects managed by this project.
+ * @param db Open database handle.
+ * @return @ref UTAX_OK on success, otherwise an error code.
+ */
 utax_rc utax_schema_drop_all(utax_db_t *db);
 
-/** @brief Recreate schema by dropping existing objects and applying SQL from file. */
+/**
+ * @brief Recreates schema by dropping objects and applying a SQL script.
+ * @param db Open database handle.
+ * @param schema_sql_path UTF-8 path to a SQL script file.
+ * @return @ref UTAX_OK on success, otherwise an error code.
+ */
 utax_rc utax_schema_recreate_from_file(utax_db_t *db, const char *schema_sql_path);
 
-/** @brief Read SQLite user version value. */
+/**
+ * @brief Reads the SQLite `user_version` value.
+ * @param db Open database handle.
+ * @param out_version Output integer receiving the current schema version.
+ * @return @ref UTAX_OK on success, otherwise an error code.
+ */
 utax_rc utax_schema_get_user_version(utax_db_t *db, int *out_version);
-/** @brief Set SQLite user version value. */
+/**
+ * @brief Sets the SQLite `user_version` value.
+ * @param db Open database handle.
+ * @param version New schema version value.
+ * @return @ref UTAX_OK on success, otherwise an error code.
+ */
 utax_rc utax_schema_set_user_version(utax_db_t *db, int version);
 
 #ifdef __cplusplus
