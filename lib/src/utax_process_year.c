@@ -456,7 +456,7 @@ static utax_rc utax__collect_realized_for_broker_year(utax_db_t *db,
                                                        utax_fifo_realized_row **out_rows,
                                                        size_t *out_count)
 {
-    if (!db || !broker || !out_rows || !out_count) return UTAX_ERR_INVALID_ARG;
+    if (!db || !out_rows || !out_count) return UTAX_ERR_INVALID_ARG;
     *out_rows = NULL;
     *out_count = 0;
 
@@ -465,8 +465,10 @@ static utax_rc utax__collect_realized_for_broker_year(utax_db_t *db,
     f.has_year = 1;
     f.year = year;
     f.year_mode = UTAX_YEAR_EXACT;
-    f.has_broker = 1;
-    utax__copy_text(f.broker, sizeof(f.broker), broker);
+    if (broker && broker[0] != '\0') {
+        f.has_broker = 1;
+        utax__copy_text(f.broker, sizeof(f.broker), broker);
+    }
 
     long long needed_ll = 0;
     utax_rc rc = utax_fifo_realized_count_filtered(db, &f, &needed_ll);
@@ -489,8 +491,47 @@ static utax_rc utax__collect_realized_for_broker_year(utax_db_t *db,
     return UTAX_OK;
 }
 
+static double utax__sum_realized_qty_for_sell(const utax_fifo_realized_row *rows,
+                                              size_t count,
+                                              long long sell_trade_id)
+{
+    size_t i = 0;
+    double total = 0.0;
+    if (!rows || count == 0 || sell_trade_id <= 0) return 0.0;
+    for (i = 0; i < count; ++i) {
+        if (rows[i].sell_trade_id == sell_trade_id) total += rows[i].qty_matched;
+    }
+    return total;
+}
+
+static int utax__next_match_seq_for_sell(const utax_fifo_realized_row *rows,
+                                         size_t count,
+                                         long long sell_trade_id)
+{
+    size_t i = 0;
+    int max_seq = 0;
+    if (!rows || count == 0 || sell_trade_id <= 0) return 1;
+    for (i = 0; i < count; ++i) {
+        if (rows[i].sell_trade_id == sell_trade_id && rows[i].match_seq > max_seq) {
+            max_seq = rows[i].match_seq;
+        }
+    }
+    return max_seq + 1;
+}
+
+static int utax__snapshot_has_acq_trade_id(const utax_fifo_snapshot_row *rows, size_t count, long long acq_trade_id) {
+    size_t i = 0;
+    if (!rows || count == 0 || acq_trade_id <= 0) return 0;
+    for (i = 0; i < count; ++i) {
+        if (rows[i].acq_trade_id == acq_trade_id) return 1;
+    }
+    return 0;
+}
+
 static utax_rc utax__convert_buys_to_snapshots(const utax_trades_row *buy_rows,
                                                 size_t buy_count,
+                                                const utax_fifo_snapshot_row *existing_snapshot_rows,
+                                                size_t existing_snapshot_count,
                                                 uint16_t year,
                                                 utax_fifo_snapshot_row **out_rows,
                                                 size_t *out_count)
@@ -503,9 +544,13 @@ static utax_rc utax__convert_buys_to_snapshots(const utax_trades_row *buy_rows,
     utax_fifo_snapshot_row *rows = (utax_fifo_snapshot_row *)calloc(buy_count, sizeof(*rows));
     if (!rows) return UTAX_ERR_NOMEM;
 
+    size_t k = 0;
     for (size_t i = 0; i < buy_count; ++i) {
         const utax_trades_row *b = &buy_rows[i];
-        utax_fifo_snapshot_row *s = &rows[i];
+        if (utax__snapshot_has_acq_trade_id(existing_snapshot_rows, existing_snapshot_count, b->id)) {
+            continue;
+        }
+        utax_fifo_snapshot_row *s = &rows[k++];
 
         s->lot_id = 0;
         s->acq_trade_id = b->id;
@@ -523,7 +568,7 @@ static utax_rc utax__convert_buys_to_snapshots(const utax_trades_row *buy_rows,
     }
 
     *out_rows = rows;
-    *out_count = buy_count;
+    *out_count = k;
     return UTAX_OK;
 }
 
@@ -611,83 +656,6 @@ static utax_rc utax__append_realized_row(utax_fifo_realized_row **rows,
     return UTAX_OK;
 }
 
-static utax_rc utax__delete_realized_for_broker_year(utax_db_t *db, const char *broker, int year) {
-    utax_fifo_realized_row *rows = NULL;
-    size_t count = 0;
-    utax_rc rc = utax__collect_realized_for_broker_year(db, broker, year, &rows, &count);
-    if (rc != UTAX_OK) return rc;
-
-    for (size_t i = 0; i < count; ++i) {
-        rc = utax_fifo_realized_delete_by_id(db, rows[i].realized_id);
-        if (rc != UTAX_OK) {
-            free(rows);
-            return rc;
-        }
-    }
-
-    free(rows);
-    return UTAX_OK;
-}
-
-static utax_rc utax__delete_snapshot_for_broker_year(utax_db_t *db, const char *broker, int year) {
-    utax_fifo_snapshot_row *rows = NULL;
-    size_t count = 0;
-    utax_rc rc = utax__collect_snapshot_for_broker_year(db, broker, year, &rows, &count);
-    if (rc != UTAX_OK) return rc;
-
-    long long trade_needed_ll = 0;
-    rc = utax_trades_count_total(db, &trade_needed_ll);
-    if (rc != UTAX_OK) {
-        free(rows);
-        return rc;
-    }
-
-    utax_trades_row *trade_rows = NULL;
-    size_t trade_count = 0;
-    if (trade_needed_ll > 0) {
-        size_t trade_needed = (size_t)trade_needed_ll;
-        trade_rows = (utax_trades_row *)calloc(trade_needed, sizeof(*trade_rows));
-        if (!trade_rows) {
-            free(rows);
-            return UTAX_ERR_NOMEM;
-        }
-
-        utax_trades_filter tf;
-        memset(&tf, 0, sizeof(tf));
-        size_t req = 0;
-        rc = utax_trades_get_filtered(db, &tf, trade_rows, trade_needed, &trade_count, &req);
-        if (rc != UTAX_OK) {
-            free(trade_rows);
-            free(rows);
-            return rc;
-        }
-    }
-
-    for (size_t i = 0; i < count; ++i) {
-        int delete_row = 1;
-        for (size_t t = 0; t < trade_count; ++t) {
-            if (trade_rows[t].id == rows[i].acq_trade_id) {
-                if (strcmp(trade_rows[t].broker, broker) != 0) {
-                    delete_row = 0;
-                }
-                break;
-            }
-        }
-        if (!delete_row) continue;
-
-        rc = utax_fifo_snapshot_delete_by_id(db, rows[i].lot_id);
-        if (rc != UTAX_OK) {
-            free(trade_rows);
-            free(rows);
-            return rc;
-        }
-    }
-
-    free(trade_rows);
-    free(rows);
-    return UTAX_OK;
-}
-
 UTAX_API utax_rc process_year_trades(
     utax_db_t *db,
     uint16_t year,
@@ -729,16 +697,13 @@ UTAX_API utax_rc process_year_trades(
         size_t sell_count = 0;
         utax_fifo_snapshot_row *snapshot_rows = NULL;
         size_t snapshot_count = 0;
+        utax_fifo_realized_row *existing_realized_rows = NULL;
+        size_t existing_realized_count = 0;
+        size_t existing_realized_cap = 0;
         utax_corporate_actions_row *action_rows = NULL;
         size_t action_count = 0;
         utax_fifo_snapshot_row *buy_snapshot_rows = NULL;
         size_t buy_snapshot_count = 0;
-
-        rc = utax__delete_realized_for_broker_year(db, broker_name, (int)year);
-        if (rc != UTAX_OK) break;
-
-        rc = utax__delete_snapshot_for_broker_year(db, broker_name, (int)year);
-        if (rc != UTAX_OK) break;
 
         rc = utax__collect_trades_for_broker_type_year(db, broker_name, "BUY", year, &buy_rows, &buy_count);
         if (rc != UTAX_OK) goto broker_cleanup;
@@ -748,16 +713,26 @@ UTAX_API utax_rc process_year_trades(
 
         rc = utax__collect_snapshot_for_broker_up_to_year(db,
                                                           broker_name,
-                                                          (int)year - 1,
+                                                          (int)year,
                                                           &snapshot_rows,
                                                           &snapshot_count);
         if (rc != UTAX_OK) goto broker_cleanup;
+
+        rc = utax__collect_realized_for_broker_year(db,
+                                                    broker_name,
+                                                    (int)year,
+                                                    &existing_realized_rows,
+                                                    &existing_realized_count);
+        if (rc != UTAX_OK) goto broker_cleanup;
+        existing_realized_cap = existing_realized_count;
 
         rc = utax__collect_actions_for_broker_year(db, broker_name, year, &action_rows, &action_count);
         if (rc != UTAX_OK) goto broker_cleanup;
 
         rc = utax__convert_buys_to_snapshots(buy_rows,
                                              buy_count,
+                                             snapshot_rows,
+                                             snapshot_count,
                                              year,
                                              &buy_snapshot_rows,
                                              &buy_snapshot_count);
@@ -776,14 +751,17 @@ UTAX_API utax_rc process_year_trades(
 
         for (size_t s = 0; s < sell_count; ++s) {
             const utax_trades_row *sell = &sell_rows[s];
-            double qty_to_match = sell->quantity;
+            double already_realized_qty = utax__sum_realized_qty_for_sell(existing_realized_rows,
+                                                                           existing_realized_count,
+                                                                           sell->id);
+            double qty_to_match = sell->quantity - already_realized_qty;
             if (qty_to_match <= 0.0) continue;
 
             double sell_conv = (sell->conversion_rate_eur > 0.0) ? sell->conversion_rate_eur : 1.0;
             double sell_price_eur = sell->price_per_share / sell_conv;
             double sell_comm_eur_total = sell->commission / sell_conv;
 
-            int match_seq = 1;
+            int match_seq = utax__next_match_seq_for_sell(existing_realized_rows, existing_realized_count, sell->id);
 
             for (size_t pass = 0; pass < 2 && qty_to_match > UTAX_QTY_EPS; ++pass) {
                 utax_fifo_snapshot_row *lots = (pass == 0) ? snapshot_rows : buy_snapshot_rows;
@@ -793,6 +771,7 @@ UTAX_API utax_rc process_year_trades(
                     utax_fifo_snapshot_row *lot = &lots[l];
                     if (lot->qty_remaining <= UTAX_QTY_EPS) continue;
                     if (strcmp(lot->ticker, sell->ticker) != 0) continue;
+                    if (strcmp(lot->broker, sell->broker) != 0) continue;
                     if (strcmp(lot->acq_datetime, sell->trade_datetime) > 0) continue;
 
                     double lot_qty_before = lot->qty_remaining;
@@ -832,6 +811,14 @@ UTAX_API utax_rc process_year_trades(
                     utax__copy_text(rr.buy_datetime, sizeof(rr.buy_datetime), lot->acq_datetime);
 
                     rc = utax__append_realized_row(&realized_rows, &realized_count, &realized_cap, &rr);
+                    if (rc != UTAX_OK) {
+                        free(realized_rows);
+                        goto broker_cleanup;
+                    }
+                    rc = utax__append_realized_row(&existing_realized_rows,
+                                                   &existing_realized_count,
+                                                   &existing_realized_cap,
+                                                   &rr);
                     if (rc != UTAX_OK) {
                         free(realized_rows);
                         goto broker_cleanup;
@@ -916,6 +903,7 @@ broker_cleanup:
         free(buy_rows);
         free(sell_rows);
         free(snapshot_rows);
+        free(existing_realized_rows);
         free(action_rows);
         free(buy_snapshot_rows);
 
@@ -928,12 +916,16 @@ broker_cleanup:
         return rc;
     }
 
-    if (out_rows) {
-        *out_rows = export_rows;
-        *out_count = export_count;
-    } else {
+    if (!out_rows) {
         free(export_rows);
+        return rc;
     }
+
+    free(export_rows);
+    export_rows = NULL;
+    export_count = 0;
+
+    rc = utax__collect_realized_for_broker_year(db, broker, (int)year, out_rows, out_count);
     return rc;
 }
 

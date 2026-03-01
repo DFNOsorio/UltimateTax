@@ -496,6 +496,7 @@ utax_rc utax_fifo_snapshot_update_price_by_lot_id(utax_db_t *db,
     utax_market_quote q;
     double conversion_rate_eur = 0.0;
     char quote_currency[UTAX_CCY_MAX];
+    int delisted = 0;
     char ticker[UTAX_TICKER_MAX];
     utax_rc rc = UTAX_OK;
     int s = SQLITE_OK;
@@ -521,8 +522,15 @@ utax_rc utax_fifo_snapshot_update_price_by_lot_id(utax_db_t *db,
     sqlite3_finalize(sel);
 
     rc = utax_market_data_lookup_yahoo_date(ticker, date_yyyy_mm_dd, 0, &q);
-    if (rc != UTAX_OK) return rc;
-    if (!utax__quote_currency_rate(&q, quote_currency, sizeof(quote_currency), &conversion_rate_eur)) return UTAX_ERR_NOT_FOUND;
+    if (rc == UTAX_ERR_NOT_FOUND) {
+        delisted = 1;
+        UTAX_STRNCPY(quote_currency, sizeof(quote_currency), "EUR");
+        conversion_rate_eur = 1.0;
+    } else if (rc != UTAX_OK) {
+        return rc;
+    } else if (!utax__quote_currency_rate(&q, quote_currency, sizeof(quote_currency), &conversion_rate_eur)) {
+        return UTAX_ERR_NOT_FOUND;
+    }
 
     rc = utax__prep(h, &upd,
                     "UPDATE fifo_snapshot "
@@ -533,8 +541,8 @@ utax_rc utax_fifo_snapshot_update_price_by_lot_id(utax_db_t *db,
 
     sqlite3_clear_bindings(upd);
     sqlite3_reset(upd);
-    (void)utax__bind_text(upd, 1, q.date_yyyy_mm_dd);
-    sqlite3_bind_double(upd, 2, q.close_price);
+    (void)utax__bind_text(upd, 1, delisted ? date_yyyy_mm_dd : q.date_yyyy_mm_dd);
+    sqlite3_bind_double(upd, 2, delisted ? 0.0 : q.close_price);
     (void)utax__bind_text(upd, 3, quote_currency);
     sqlite3_bind_double(upd, 4, conversion_rate_eur);
     sqlite3_bind_int64(upd, 5, (sqlite3_int64)lot_id);
@@ -571,6 +579,7 @@ utax_rc utax_fifo_snapshot_update_prices_by_ticker(utax_db_t *db,
     utax_market_quote q;
     double conversion_rate_eur = 0.0;
     char quote_currency[UTAX_CCY_MAX];
+    int delisted = 0;
     utax_rc rc = UTAX_OK;
     long long matched = 0;
 
@@ -591,11 +600,14 @@ utax_rc utax_fifo_snapshot_update_prices_by_ticker(utax_db_t *db,
     if (matched <= 0) return UTAX_OK;
 
     rc = utax_market_data_lookup_yahoo_date(ticker, date_yyyy_mm_dd, 0, &q);
-    if (utax__market_lookup_unavailable(rc)) {
+    if (rc == UTAX_ERR_NOT_FOUND) {
+        delisted = 1;
+        UTAX_STRNCPY(quote_currency, sizeof(quote_currency), "EUR");
+        conversion_rate_eur = 1.0;
+    } else if (utax__market_lookup_unavailable(rc)) {
         if (out_unavailable) *out_unavailable = (size_t)matched;
         return UTAX_OK;
-    }
-    if (!utax__quote_currency_rate(&q, quote_currency, sizeof(quote_currency), &conversion_rate_eur)) {
+    } else if (!utax__quote_currency_rate(&q, quote_currency, sizeof(quote_currency), &conversion_rate_eur)) {
         if (out_unavailable) *out_unavailable = (size_t)matched;
         return UTAX_OK;
     }
@@ -607,8 +619,8 @@ utax_rc utax_fifo_snapshot_update_prices_by_ticker(utax_db_t *db,
                     "WHERE ticker=?5;");
     if (rc != UTAX_OK) return rc;
 
-    (void)utax__bind_text(upd, 1, q.date_yyyy_mm_dd);
-    sqlite3_bind_double(upd, 2, q.close_price);
+    (void)utax__bind_text(upd, 1, delisted ? date_yyyy_mm_dd : q.date_yyyy_mm_dd);
+    sqlite3_bind_double(upd, 2, delisted ? 0.0 : q.close_price);
     (void)utax__bind_text(upd, 3, quote_currency);
     sqlite3_bind_double(upd, 4, conversion_rate_eur);
     (void)utax__bind_text(upd, 5, ticker);
@@ -679,22 +691,26 @@ utax_rc utax_fifo_snapshot_update_prices_paged(utax_db_t *db,
         utax_market_quote q;
         double conversion_rate_eur = 0.0;
         char quote_currency[UTAX_CCY_MAX];
+        int delisted = 0;
         quote_currency[0] = '\0';
         utax_rc lrc = utax_market_data_lookup_yahoo_date(rows[i].ticker, date_yyyy_mm_dd, 0, &q);
 
-        if (utax__market_lookup_unavailable(lrc)) {
+        if (lrc == UTAX_ERR_NOT_FOUND) {
+            delisted = 1;
+            UTAX_STRNCPY(quote_currency, sizeof(quote_currency), "EUR");
+            conversion_rate_eur = 1.0;
+        } else if (utax__market_lookup_unavailable(lrc)) {
             unavailable++;
             continue;
-        }
-        if (!utax__quote_currency_rate(&q, quote_currency, sizeof(quote_currency), &conversion_rate_eur)) {
+        } else if (!utax__quote_currency_rate(&q, quote_currency, sizeof(quote_currency), &conversion_rate_eur)) {
             unavailable++;
             continue;
         }
 
         sqlite3_clear_bindings(upd);
         sqlite3_reset(upd);
-        (void)utax__bind_text(upd, 1, q.date_yyyy_mm_dd);
-        sqlite3_bind_double(upd, 2, q.close_price);
+        (void)utax__bind_text(upd, 1, delisted ? date_yyyy_mm_dd : q.date_yyyy_mm_dd);
+        sqlite3_bind_double(upd, 2, delisted ? 0.0 : q.close_price);
         (void)utax__bind_text(upd, 3, quote_currency);
         sqlite3_bind_double(upd, 4, conversion_rate_eur);
         sqlite3_bind_int64(upd, 5, (sqlite3_int64)rows[i].lot_id);

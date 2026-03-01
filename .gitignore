@@ -23,3 +23,4 @@ backup-before-rewrite.bundle
 compile_commands.json
 build_output_2019_tmp
 **/build/
+scripts/certs

@@ -5,13 +5,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdarg.h>
 
 #if defined(_WIN32)
   #include <process.h>
+  #include <windows.h>
   #define UTAX_POPEN _popen
   #define UTAX_PCLOSE _pclose
 #else
   #include <sys/wait.h>
+  #include <unistd.h>
   #define UTAX_POPEN popen
   #define UTAX_PCLOSE pclose
 #endif
@@ -19,10 +22,106 @@
 enum {
     UTAX_MARKET_URL_MAX = 1024,
     UTAX_MARKET_CMD_MAX = 1200,
-    UTAX_MARKET_JSON_MAX = 262144
+    UTAX_MARKET_JSON_MAX = 262144,
+    UTAX_MARKET_CALL_THROTTLE_MS = 200,
+    UTAX_MARKET_FX_CALL_THROTTLE_MS = 150
 };
 
 static utax_rc utax__fetch_url_text(const char *url, char *out_buf, size_t out_cap, size_t *out_len);
+
+static void utax__market_log(const char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    (void)fprintf(stderr, "[utax_market_data] ");
+    (void)vfprintf(stderr, fmt, args);
+    (void)fprintf(stderr, "\n");
+    va_end(args);
+}
+
+static void utax__sleep_ms(unsigned ms) {
+#if defined(_WIN32)
+    Sleep(ms);
+#else
+    usleep((useconds_t)ms * 1000U);
+#endif
+}
+
+typedef struct utax_fx_cache_entry {
+    char currency[UTAX_CCY_MAX];
+    char date_yyyy_mm_dd[11];
+    double rate;
+    int valid;
+} utax_fx_cache_entry;
+
+enum { UTAX_FX_CACHE_CAP = 32 };
+static utax_fx_cache_entry g_utax_fx_cache[UTAX_FX_CACHE_CAP];
+static unsigned g_utax_fx_cache_next = 0;
+
+static int utax__fx_cache_get(const char *currency, const char *date_yyyy_mm_dd, double *out_rate) {
+    unsigned i = 0;
+    if (!currency || !date_yyyy_mm_dd || !out_rate) return 0;
+    for (i = 0; i < UTAX_FX_CACHE_CAP; ++i) {
+        if (!g_utax_fx_cache[i].valid) continue;
+        if (strcmp(g_utax_fx_cache[i].currency, currency) == 0 &&
+            strcmp(g_utax_fx_cache[i].date_yyyy_mm_dd, date_yyyy_mm_dd) == 0) {
+            *out_rate = g_utax_fx_cache[i].rate;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static void utax__fx_cache_put(const char *currency, const char *date_yyyy_mm_dd, double rate) {
+    utax_fx_cache_entry *e = NULL;
+    if (!currency || !date_yyyy_mm_dd || rate <= 0.0) return;
+    e = &g_utax_fx_cache[g_utax_fx_cache_next % UTAX_FX_CACHE_CAP];
+    memset(e, 0, sizeof(*e));
+    (void)snprintf(e->currency, sizeof(e->currency), "%s", currency);
+    (void)snprintf(e->date_yyyy_mm_dd, sizeof(e->date_yyyy_mm_dd), "%s", date_yyyy_mm_dd);
+    e->rate = rate;
+    e->valid = 1;
+    g_utax_fx_cache_next++;
+}
+
+static void utax__normalize_fx_currency(const char *in_ccy, char *out_ccy, size_t out_sz, double *out_rate_scale) {
+    char u0 = 0, u1 = 0, u2 = 0;
+
+    if (!out_ccy || out_sz == 0 || !out_rate_scale) return;
+    out_ccy[0] = '\0';
+    *out_rate_scale = 1.0;
+    if (!in_ccy || !in_ccy[0]) return;
+
+    u0 = (char)toupper((unsigned char)in_ccy[0]);
+    u1 = (char)toupper((unsigned char)in_ccy[1]);
+    u2 = (char)toupper((unsigned char)in_ccy[2]);
+
+    /* London quotes in pence (GBp/GBX): request GBP from ECB and scale by 100. */
+    if ((u0 == 'G' && u1 == 'B' && in_ccy[2] == 'p' && in_ccy[3] == '\0') ||
+        (u0 == 'G' && u1 == 'B' && u2 == 'X' && in_ccy[3] == '\0')) {
+        (void)snprintf(out_ccy, out_sz, "GBP");
+        *out_rate_scale = 100.0;
+        return;
+    }
+
+    /* Explicit GBP uppercase: keep as-is (major unit). */
+    if (strcmp(in_ccy, "GBP") == 0) {
+        (void)snprintf(out_ccy, out_sz, "GBP");
+        *out_rate_scale = 1.0;
+        return;
+    }
+
+    if (in_ccy[0] && in_ccy[1] && in_ccy[2] && in_ccy[3] == '\0') {
+        char up[UTAX_CCY_MAX];
+        up[0] = (char)toupper((unsigned char)in_ccy[0]);
+        up[1] = (char)toupper((unsigned char)in_ccy[1]);
+        up[2] = (char)toupper((unsigned char)in_ccy[2]);
+        up[3] = '\0';
+        (void)snprintf(out_ccy, out_sz, "%s", up);
+        return;
+    }
+
+    (void)snprintf(out_ccy, out_sz, "%s", in_ccy);
+}
 
 static int utax__is_leap_year(int year) {
     return ((year % 4) == 0 && (year % 100) != 0) || ((year % 400) == 0);
@@ -215,10 +314,12 @@ static int utax__extract_meta_currency(const char *json, char *out_ccy, size_t o
     const char *meta = NULL;
     const char *key = NULL;
     const char *val = NULL;
+    char tmp[UTAX_CCY_MAX];
     size_t i = 0;
 
     if (!json || !out_ccy || out_ccy_sz == 0) return 0;
     out_ccy[0] = '\0';
+    memset(tmp, 0, sizeof(tmp));
 
     meta = strstr(json, "\"meta\"");
     if (!meta) return 0;
@@ -233,31 +334,63 @@ static int utax__extract_meta_currency(const char *json, char *out_ccy, size_t o
 
     while (val[i] && val[i] != '"') {
         unsigned char c = (unsigned char)val[i];
-        if (!isupper(c)) return 0;
-        if (i + 1 >= out_ccy_sz) return 0;
-        out_ccy[i] = (char)c;
+        if (!isalpha(c)) return 0;
+        if (i + 1 >= sizeof(tmp) || i + 1 >= out_ccy_sz) return 0;
+        tmp[i] = (char)c;
         i++;
     }
 
     if (val[i] != '"' || i == 0) return 0;
-    out_ccy[i] = '\0';
+    tmp[i] = '\0';
+    (void)snprintf(out_ccy, out_ccy_sz, "%s", tmp);
     return 1;
 }
 
-static int utax__extract_ecb_value(const char *json, double *out_value) {
+static int utax__extract_ecb_csv_value(const char *csv, double *out_value) {
+    const char *line = NULL;
     const char *p = NULL;
+    const char *end_line = NULL;
+    const char *val = NULL;
     char *end = NULL;
+    size_t val_len = 0;
+    char buf[64];
 
-    if (!json || !out_value) return 0;
-    p = strstr(json, "\"value\":");
-    if (!p) return 0;
-    p += 8;
-    p = utax__skip_ws(p);
-    if (!p || !*p) return 0;
-    if (*p == '"') p++;
+    if (!csv || !out_value) return 0;
+    if (!*csv) return 0;
 
-    *out_value = strtod(p, &end);
-    if (end == p) return 0;
+    /* last non-empty data line */
+    p = csv + strlen(csv);
+    while (p > csv && (p[-1] == '\n' || p[-1] == '\r' || isspace((unsigned char)p[-1]))) p--;
+    if (p == csv) return 0;
+
+    end_line = p;
+    while (p > csv && p[-1] != '\n') p--;
+    line = p;
+    if (!line || line >= end_line) return 0;
+
+    /* skip header line */
+    if (strstr(line, "TIME_PERIOD") != NULL || strstr(line, "OBS_VALUE") != NULL) return 0;
+
+    /* last CSV field */
+    p = end_line;
+    while (p > line && p[-1] != ',') p--;
+    if (p <= line) return 0;
+    val = p;
+    while (val < end_line && isspace((unsigned char)*val)) val++;
+    while (end_line > val && isspace((unsigned char)end_line[-1])) end_line--;
+    if (val >= end_line) return 0;
+
+    if (*val == '"' && end_line > val + 1 && end_line[-1] == '"') {
+        val++;
+        end_line--;
+    }
+    val_len = (size_t)(end_line - val);
+    if (val_len == 0 || val_len >= sizeof(buf)) return 0;
+    memcpy(buf, val, val_len);
+    buf[val_len] = '\0';
+
+    *out_value = strtod(buf, &end);
+    if (end == buf) return 0;
     return *out_value > 0.0;
 }
 
@@ -302,63 +435,117 @@ static utax_rc utax__lookup_yahoo_single_date(
 }
 
 static utax_rc utax__fetch_url_text(const char *url, char *out_buf, size_t out_cap, size_t *out_len) {
-    FILE *pipe = NULL;
-    size_t total = 0;
-    size_t nread = 0;
-    int status = 0;
+    enum { UTAX_MAX_429_RETRIES = 3 };
+    int attempt = 0;
     char cmd[UTAX_MARKET_CMD_MAX];
 
     if (!url || !out_buf || out_cap == 0 || !out_len) return UTAX_ERR_INVALID_ARG;
-    *out_len = 0;
-    out_buf[0] = '\0';
 
-    if (snprintf(cmd, sizeof(cmd), "curl -fsSL --max-time 15 \"%s\"", url) >= (int)sizeof(cmd)) {
-        return UTAX_ERR_TRUNCATED;
-    }
+    for (attempt = 0; attempt <= UTAX_MAX_429_RETRIES; ++attempt) {
+        FILE *pipe = NULL;
+        size_t total = 0;
+        size_t nread = 0;
+        int status = 0;
+        int is_429 = 0;
+        int is_404 = 0;
 
-    pipe = UTAX_POPEN(cmd, "rb");
-    if (!pipe) return UTAX_ERR_IO_OPEN;
+        *out_len = 0;
+        out_buf[0] = '\0';
 
-    while ((nread = fread(out_buf + total, 1, out_cap - total - 1, pipe)) > 0) {
-        total += nread;
-        if (total >= out_cap - 1) {
-            (void)UTAX_PCLOSE(pipe);
-            out_buf[out_cap - 1] = '\0';
-            return UTAX_ERR_NO_SPACE;
+        if (snprintf(
+                cmd,
+                sizeof(cmd),
+                "curl -fsSL --retry 0 --max-time 15 -A \"ultimateTax/1.0\" \"%s\" 2>&1",
+                url
+            ) >= (int)sizeof(cmd)) {
+            return UTAX_ERR_TRUNCATED;
         }
+
+        pipe = UTAX_POPEN(cmd, "rb");
+        if (!pipe) return UTAX_ERR_IO_OPEN;
+
+        while ((nread = fread(out_buf + total, 1, out_cap - total - 1, pipe)) > 0) {
+            total += nread;
+            if (total >= out_cap - 1) {
+                (void)UTAX_PCLOSE(pipe);
+                out_buf[out_cap - 1] = '\0';
+                return UTAX_ERR_NO_SPACE;
+            }
+        }
+
+        out_buf[total] = '\0';
+        status = UTAX_PCLOSE(pipe);
+        if (status == 0 && total > 0) {
+            *out_len = total;
+            return UTAX_OK;
+        }
+
+        is_429 = (strstr(out_buf, "429") != NULL);
+        is_404 = (strstr(out_buf, "404") != NULL);
+        if (is_429) {
+            utax__market_log("HTTP 429 rate limited while fetching URL: %s", url);
+        } else if (is_404) {
+            utax__market_log("HTTP 404 not found for URL: %s", url);
+        } else {
+            utax__market_log("fetch failed (status=%d, bytes=%zu) URL: %s", status, total, url);
+        }
+        if (total > 0) {
+            utax__market_log("curl output: %s", out_buf);
+        }
+
+        if (is_429 && attempt < UTAX_MAX_429_RETRIES) {
+            unsigned delay_ms = 500U << attempt; /* 500ms, 1000ms, 2000ms */
+            utax__market_log(
+                "retrying after 429 (attempt %d/%d, delay=%ums) URL: %s",
+                attempt + 1,
+                UTAX_MAX_429_RETRIES + 1,
+                delay_ms,
+                url
+            );
+            utax__sleep_ms(delay_ms);
+            continue;
+        }
+
+        if (is_404) return UTAX_ERR_NOT_FOUND;
+        return UTAX_ERR_IO_READ;
     }
 
-    out_buf[total] = '\0';
-    status = UTAX_PCLOSE(pipe);
-    if (status != 0 || total == 0) return UTAX_ERR_IO_READ;
-
-    *out_len = total;
-    return UTAX_OK;
+    return UTAX_ERR_IO_READ;
 }
 
 static int utax__fetch_conversion_rate_eur(const char *currency, const char *date_yyyy_mm_dd, double *out_rate) {
+    char fx_ccy[UTAX_CCY_MAX];
     char url[UTAX_MARKET_URL_MAX];
     char json_buf[UTAX_MARKET_JSON_MAX];
     char lookup_date[11];
     size_t json_len = 0;
     utax_rc rc = UTAX_OK;
     double v = 0.0;
+    double rate_scale = 1.0;
     int back = 0;
 
     if (!currency || !date_yyyy_mm_dd || !out_rate) return 0;
-    if (strcmp(currency, "EUR") == 0) {
+    if (utax__fx_cache_get(currency, date_yyyy_mm_dd, out_rate)) return 1;
+    utax__normalize_fx_currency(currency, fx_ccy, sizeof(fx_ccy), &rate_scale);
+    if (fx_ccy[0] == '\0') return 0;
+    if (strcmp(currency, fx_ccy) != 0 || rate_scale != 1.0) {
+        utax__market_log("FX currency normalized: quote_ccy=%s api_ccy=%s rate_scale=%.2f", currency, fx_ccy, rate_scale);
+    }
+
+    if (strcmp(fx_ccy, "EUR") == 0) {
         *out_rate = 1.0;
         return 1;
     }
 
     for (back = 0; back <= 3; ++back) {
         if (!utax__shift_date_days(date_yyyy_mm_dd, -back, lookup_date, sizeof(lookup_date))) return 0;
+        utax__sleep_ms(UTAX_MARKET_FX_CALL_THROTTLE_MS);
 
         if (snprintf(
                 url,
                 sizeof(url),
-                "https://data-api.ecb.europa.eu/service/data/EXR/D.%s.EUR.SP00.A?startPeriod=%s&endPeriod=%s&format=jsondata",
-                currency,
+                "https://data-api.ecb.europa.eu/service/data/EXR/D.%s.EUR.SP00.A?startPeriod=%s&endPeriod=%s&detail=dataonly&format=csvdata",
+                fx_ccy,
                 lookup_date,
                 lookup_date
             ) >= (int)sizeof(url)) {
@@ -366,10 +553,17 @@ static int utax__fetch_conversion_rate_eur(const char *currency, const char *dat
         }
 
         rc = utax__fetch_url_text(url, json_buf, sizeof(json_buf), &json_len);
-        if (rc != UTAX_OK || json_len == 0) continue;
-        if (!utax__extract_ecb_value(json_buf, &v)) continue;
+        if (rc != UTAX_OK || json_len == 0) {
+            utax__market_log("FX lookup failed for %s->EUR on %s (fallback -%d day)", fx_ccy, lookup_date, back);
+            continue;
+        }
+        if (!utax__extract_ecb_csv_value(json_buf, &v)) {
+            utax__market_log("FX value missing for %s->EUR on %s (fallback -%d day)", fx_ccy, lookup_date, back);
+            continue;
+        }
 
-        *out_rate = v;
+        *out_rate = v * rate_scale;
+        utax__fx_cache_put(currency, date_yyyy_mm_dd, *out_rate);
         return 1;
     }
 
@@ -400,11 +594,11 @@ utax_rc utax_market_data_lookup_yahoo_date_from_json(
     out_quote->dividend_status = UTAX_MARKET_DIVIDEND_NOT_REQUESTED;
     out_quote->has_conversion_rate_eur = 0;
 
-    if (!strstr(yahoo_chart_json, "\"chart\"")) return UTAX_ERR_PARSE;
+    if (!strstr(yahoo_chart_json, "\"chart\"")) return UTAX_ERR_NOT_FOUND;
     (void)utax__extract_meta_currency(yahoo_chart_json, out_quote->currency, sizeof(out_quote->currency));
 
     if (!utax__extract_array_value(yahoo_chart_json, "\"close\":", &close_price, &close_is_null)) {
-        return UTAX_ERR_PARSE;
+        return UTAX_ERR_NOT_FOUND;
     }
     if (close_is_null) return UTAX_ERR_NOT_FOUND;
     out_quote->close_price = close_price;
@@ -441,13 +635,24 @@ utax_rc utax_market_data_lookup_yahoo_date(
     if (!ticker || !date_yyyy_mm_dd || !out_quote) return UTAX_ERR_INVALID_ARG;
     if (!utax__valid_ticker(ticker)) return UTAX_ERR_INVALID_ARG;
     if (!utax__parse_yyyy_mm_dd(date_yyyy_mm_dd, &(int){0}, &(int){0}, &(int){0})) return UTAX_ERR_INVALID_ARG;
+    utax__sleep_ms(UTAX_MARKET_CALL_THROTTLE_MS);
 
     memset(&q, 0, sizeof(q));
     for (back = 0; back <= 3; ++back) {
         if (!utax__shift_date_days(date_yyyy_mm_dd, -back, lookup_date, sizeof(lookup_date))) return UTAX_ERR_INVALID_ARG;
         rc = utax__lookup_yahoo_single_date(ticker, lookup_date, include_dividend_yield, &q);
+        if (rc != UTAX_OK) {
+            utax__market_log(
+                "quote lookup failed ticker=%s req_date=%s try_date=%s (fallback -%d day) rc=%d",
+                ticker,
+                date_yyyy_mm_dd,
+                lookup_date,
+                back,
+                (int)rc
+            );
+        }
         if (rc == UTAX_OK) break;
-        if (rc != UTAX_ERR_NOT_FOUND) return rc;
+        if (rc != UTAX_ERR_NOT_FOUND && rc != UTAX_ERR_PARSE) return rc;
     }
     if (rc != UTAX_OK) return UTAX_ERR_NOT_FOUND;
 
