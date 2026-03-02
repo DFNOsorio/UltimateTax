@@ -77,6 +77,20 @@ const utax_corporate_actions_row UTAX_MOCK_CORP_ACTIONS[] = {
 
         .from_ticker = "PIC",
         .to_ticker = "XL"
+    },
+    {
+        .action_id = 0,
+        .from_qty = 1.0,
+        .to_qty = 4.621214,
+        .ratio = 0.0,
+        .action_year = 0,
+
+        .broker = "IKBR",
+        .action_date = "2023-09-26",
+        .action_type = "CASH",
+
+        .from_ticker = "RNW.TO",
+        .to_ticker = "" /* must be NULL in DB; API maps empty->NULL */
     }
 };
 
@@ -89,4 +103,5 @@ const char *UTAX_CORP_ACTIONS_CSV_TEXT =
     "ACTION_DATE,BROKER,ACTION_TYPE,FROM_TICKER,FROM_QTY,TO_TICKER,TO_QTY\n"
     "2020-04-02,REVO,MERGER,RTN,10000,RTX,23348\n"
     "2020-06-03,REVO,CONVERSION,VTIQ,1,NKLA,1\n"
-    "2021-07-30,REVO,SPLIT,GE,8,,1\n";
+    "2021-07-30,REVO,SPLIT,GE,8,,1\n"
+    "2023-09-26,IKBR,CASH,RNW.TO,1,,4.621214\n";

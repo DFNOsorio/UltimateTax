@@ -100,20 +100,26 @@ int main(int argc, char **argv) {
 
     rc = utax_corporate_actions_parse_csv_file(csv_path, &rows, &total);
     UTAX_TEST_REQUIRE_RC(rc, "parse_csv_file failed");
-    UTAX_TEST_REQUIRE(total == 3, "expected 3 parsed rows");
+    UTAX_TEST_REQUIRE(total == 4, "expected 4 parsed rows");
     UTAX_TEST_REQUIRE(rows != NULL, "expected array rows");
 
-    /* verify SPLIT row has empty to_ticker in array */
+    /* verify SPLIT/CASH rows have empty to_ticker in array */
     {
         int saw_split = 0;
+        int saw_cash = 0;
         for (size_t i = 0; i < total; ++i) {
             if (strcmp(rows[i].action_type, "SPLIT") == 0) {
                 saw_split = 1;
                 UTAX_TEST_REQUIRE(rows[i].to_ticker[0] == '\0', "split row to_ticker must be empty");
                 UTAX_TEST_REQUIRE(rows[i].from_qty == 8.0 && rows[i].to_qty == 1.0, "split qty mismatch");
+            } else if (strcmp(rows[i].action_type, "CASH") == 0) {
+                saw_cash = 1;
+                UTAX_TEST_REQUIRE(rows[i].to_ticker[0] == '\0', "cash row to_ticker must be empty");
+                UTAX_TEST_REQUIRE(rows[i].from_qty == 1.0 && rows[i].to_qty == 4.621214, "cash qty mismatch");
             }
         }
         UTAX_TEST_REQUIRE(saw_split, "did not find SPLIT row");
+        UTAX_TEST_REQUIRE(saw_cash, "did not find CASH row");
     }
 
     /* insert array (batch) */
@@ -121,7 +127,7 @@ int main(int argc, char **argv) {
     rc = utax_corporate_actions_insert_many_array(db, rows, total, &inserted);
     if (rc != UTAX_OK) fprintf(stderr, "insert_many_array rc=%d err=%s\n", (int)rc, utax_db_last_error(db));
     UTAX_TEST_REQUIRE_RC(rc, "insert_many_array failed");
-    UTAX_TEST_REQUIRE(inserted == 3, "insert_many_array inserted mismatch");
+    UTAX_TEST_REQUIRE(inserted == 4, "insert_many_array inserted mismatch");
 
     /* verify ids set */
     for (size_t i = 0; i < total; ++i) {
@@ -137,18 +143,18 @@ int main(int argc, char **argv) {
     long long ct = -1;
     rc = utax_corporate_actions_count_total(db, &ct);
     UTAX_TEST_REQUIRE_RC(rc, "count_total failed");
-    UTAX_TEST_REQUIRE(ct == 3, "expected count_total=3");
+    UTAX_TEST_REQUIRE(ct == 4, "expected count_total=4");
 
-    /* insert from file path (parse->insert->free) should add 3 more */
+    /* insert from file path (parse->insert->free) should add 4 more */
     size_t inserted2 = 0;
     rc = utax_corporate_actions_insert_many_from_csv_file(db, csv_path, &inserted2);
     if (rc != UTAX_OK) fprintf(stderr, "insert_many_from_csv_file rc=%d err=%s\n", (int)rc, utax_db_last_error(db));
     UTAX_TEST_REQUIRE_RC(rc, "insert_many_from_csv_file failed");
-    UTAX_TEST_REQUIRE(inserted2 == 3, "insert_many_from_csv_file inserted mismatch");
+    UTAX_TEST_REQUIRE(inserted2 == 4, "insert_many_from_csv_file inserted mismatch");
 
     rc = utax_corporate_actions_count_total(db, &ct);
     UTAX_TEST_REQUIRE_RC(rc, "count_total failed");
-    UTAX_TEST_REQUIRE(ct == 6, "expected count_total=6");
+    UTAX_TEST_REQUIRE(ct == 8, "expected count_total=8");
 
     rc = utax_db_close(db);
     UTAX_TEST_REQUIRE_RC(rc, "db_close failed");

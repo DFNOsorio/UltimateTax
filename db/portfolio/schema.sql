@@ -341,7 +341,7 @@ CREATE TABLE IF NOT EXISTS corporate_actions (
                  GENERATED ALWAYS AS (CAST(substr(action_date, 1, 4) AS INTEGER)) STORED,
 
     action_type   TEXT NOT NULL
-                 CHECK (action_type IN ('MERGER','CONVERSION','SPINOFF','SPLIT')),
+                 CHECK (action_type IN ('MERGER','CONVERSION','SPINOFF','SPLIT','CASH')),
 
     from_ticker   TEXT NOT NULL,
     to_ticker     TEXT,  -- NULL when SPLIT
@@ -362,9 +362,9 @@ CREATE TABLE IF NOT EXISTS corporate_actions (
 
     -- Enforce to_ticker NULL only for SPLIT
     CHECK (
-        (action_type = 'SPLIT' AND to_ticker IS NULL)
+        ((action_type = 'SPLIT' OR action_type = 'CASH') AND to_ticker IS NULL)
         OR
-        (action_type <> 'SPLIT' AND to_ticker IS NOT NULL)
+        ((action_type <> 'SPLIT' AND action_type <> 'CASH') AND to_ticker IS NOT NULL)
     )
 );
 

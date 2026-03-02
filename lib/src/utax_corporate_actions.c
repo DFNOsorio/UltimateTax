@@ -21,6 +21,12 @@ static utax_rc utax__bind_text_nullable(sqlite3_stmt *st, int idx, const char *s
     return (sqlite3_bind_text(st, idx, s, -1, SQLITE_TRANSIENT) == SQLITE_OK) ? UTAX_OK : UTAX_ERR_SQLITE;
 }
 
+static int utax__action_type_requires_null_to_ticker(const char *action_type) {
+    return action_type &&
+           (strcmp(action_type, "SPLIT") == 0 ||
+            strcmp(action_type, "CASH") == 0);
+}
+
 static utax_rc utax__build_where_plain(char *sql, size_t sql_sz, const utax_corporate_actions_filter *f) {
     if (!f) return UTAX_OK;
 
@@ -97,8 +103,8 @@ utax_rc utax_corporate_actions_insert(utax_db_t *db, const utax_corporate_action
     sqlite3_bind_text(st, 3, row->action_type, -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(st, 4, row->from_ticker, -1, SQLITE_TRANSIENT);
 
-    /* SPLIT => to_ticker must be NULL */
-    if (strcmp(row->action_type, "SPLIT") == 0) {
+    /* SPLIT/CASH => to_ticker must be NULL */
+    if (utax__action_type_requires_null_to_ticker(row->action_type)) {
         sqlite3_bind_null(st, 5);
     } else {
         (void)utax__bind_text_nullable(st, 5, row->to_ticker);
@@ -134,7 +140,7 @@ utax_rc utax_corporate_actions_update_by_id(utax_db_t *db, long long action_id, 
     sqlite3_bind_text(st, 3, row->action_type, -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(st, 4, row->from_ticker, -1, SQLITE_TRANSIENT);
 
-    if (strcmp(row->action_type, "SPLIT") == 0) sqlite3_bind_null(st, 5);
+    if (utax__action_type_requires_null_to_ticker(row->action_type)) sqlite3_bind_null(st, 5);
     else (void)utax__bind_text_nullable(st, 5, row->to_ticker);
 
     sqlite3_bind_double(st, 6, row->from_qty);
@@ -421,7 +427,8 @@ static int utax__is_action_type_ok(const char *t) {
            (strcmp(t, "MERGER") == 0 ||
             strcmp(t, "CONVERSION") == 0 ||
             strcmp(t, "SPINOFF") == 0 ||
-            strcmp(t, "SPLIT") == 0);
+            strcmp(t, "SPLIT") == 0 ||
+            strcmp(t, "CASH") == 0);
 }
 
 static utax_rc utax__validate_ca_header(char *hdr_line) {
@@ -545,8 +552,8 @@ utax_rc utax_corporate_actions_parse_csv_file(const char *path,
             return UTAX_ERR_BAD_FIELD;
         }
 
-        /* SPLIT rules: to_ticker must be empty; others must have to_ticker */
-        if (strcmp(r->action_type, "SPLIT") == 0) {
+        /* SPLIT/CASH rules: to_ticker must be empty; others must have to_ticker */
+        if (utax__action_type_requires_null_to_ticker(r->action_type)) {
             if (fields[5] && fields[5][0] != '\0') {
                 fclose(f);
                 free(parsed_rows);
@@ -617,13 +624,13 @@ static utax_rc utax__ca_step_insert_stmt(struct utax_db *h, sqlite3_stmt *st, ut
     sqlite3_clear_bindings(st);
     sqlite3_reset(st);
 
-    /* bind: broker, action_date, action_type, from_ticker, to_ticker(NULL for split), from_qty, to_qty */
+    /* bind: broker, action_date, action_type, from_ticker, to_ticker(NULL for split/cash), from_qty, to_qty */
     (void)utax__bind_text(st, 1, r->broker);
     (void)utax__bind_text(st, 2, r->action_date);
     (void)utax__bind_text(st, 3, r->action_type);
     (void)utax__bind_text(st, 4, r->from_ticker);
 
-    if (strcmp(r->action_type, "SPLIT") == 0) {
+    if (utax__action_type_requires_null_to_ticker(r->action_type)) {
         if (sqlite3_bind_null(st, 5) != SQLITE_OK) return utax__set_err_sqlite(h, SQLITE_ERROR);
     } else {
         if (sqlite3_bind_text(st, 5, r->to_ticker, -1, SQLITE_TRANSIENT) != SQLITE_OK) return utax__set_err_sqlite(h, SQLITE_ERROR);

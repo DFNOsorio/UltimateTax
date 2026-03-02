@@ -74,6 +74,7 @@ int main(int argc, char **argv) {
     };
     long long seeded_lot_id = 0;
     long long split_action_id = 0;
+    long long cash_action_id = 0;
 
     assert(argc >= 2);
     schema_path = argv[1];
@@ -125,6 +126,18 @@ int main(int argc, char **argv) {
         UTAX_STRNCPY(a.from_ticker, sizeof(a.from_ticker), "XYZ");
         rc = utax_corporate_actions_insert(db, &a, &split_action_id);
         assert(rc == UTAX_OK && split_action_id > 0);
+    }
+    {
+        utax_corporate_actions_row a;
+        memset(&a, 0, sizeof(a));
+        a.from_qty = 1.0;
+        a.to_qty = 5.0;
+        UTAX_STRNCPY(a.broker, sizeof(a.broker), "IKBR");
+        UTAX_STRNCPY(a.action_date, sizeof(a.action_date), "2025-03-15");
+        UTAX_STRNCPY(a.action_type, sizeof(a.action_type), "CASH");
+        UTAX_STRNCPY(a.from_ticker, sizeof(a.from_ticker), "XYZ");
+        rc = utax_corporate_actions_insert(db, &a, &cash_action_id);
+        assert(rc == UTAX_OK && cash_action_id > 0);
     }
 
     rc = process_year_trades(db, 2025, NULL, NULL, NULL);

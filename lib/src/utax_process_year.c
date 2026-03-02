@@ -5,11 +5,13 @@
 #include "utax_fifo_realized.h"
 #include "utax_fifo_snapshot.h"
 #include "utax_fifo_snapshot_action_applied.h"
+#include "utax_market_data.h"
 #include "utax_options.h"
 #include "utax_schema.h"
 #include "utax_trades.h"
 
 #include <ctype.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -585,12 +587,17 @@ static utax_rc utax__apply_actions_to_snapshots(utax_db_t *db,
                                                 size_t row_count,
                                                 const utax_corporate_actions_row *actions,
                                                 size_t action_count,
-                                                int track_idempotency)
+                                                int track_idempotency,
+                                                utax_fifo_snapshot_row **spawned_rows,
+                                                size_t *spawned_count,
+                                                size_t *spawned_cap)
 {
     if (!rows || !actions) return UTAX_OK;
 
     for (size_t a = 0; a < action_count; ++a) {
         const utax_corporate_actions_row *act = &actions[a];
+        if (strcmp(act->action_type, "CASH") == 0) continue;
+
         char transfer_src[UTAX_BROKER_MAX];
         char transfer_dst[UTAX_BROKER_MAX];
         int is_transfer = utax__parse_broker_transfer(act->broker,
@@ -600,6 +607,68 @@ static utax_rc utax__apply_actions_to_snapshots(utax_db_t *db,
 
         double ratio = (act->ratio > 0.0) ? act->ratio : (act->to_qty / act->from_qty);
         if (!is_transfer && ratio <= 0.0) continue;
+
+        int spinoff_market_price_ok = 0;
+        double spinoff_market_cost_per_share_eur = 0.0;
+        double spinoff_market_raw_price = 0.0;
+        const char *spinoff_market_price_field = "close";
+        char spinoff_market_price_ccy[UTAX_CCY_MAX];
+        spinoff_market_price_ccy[0] = '\0';
+        char spinoff_market_price_date[11];
+        spinoff_market_price_date[0] = '\0';
+        double spinoff_market_fx = 0.0;
+
+        if (!is_transfer && strcmp(act->action_type, "SPINOFF") == 0 && act->to_ticker[0] != '\0') {
+            utax_market_quote q;
+            memset(&q, 0, sizeof(q));
+            utax_rc qrc = utax_market_data_lookup_yahoo_date_forward(act->to_ticker, act->action_date, 0, &q);
+            if (qrc == UTAX_OK) {
+                double px = 0.0;
+                double conv = 0.0;
+
+                if (q.has_open_price && q.open_price > 0.0) {
+                    px = q.open_price;
+                    spinoff_market_price_field = "open";
+                } else if (q.close_price > 0.0) {
+                    px = q.close_price;
+                    spinoff_market_price_field = "close";
+                }
+
+                if (strcmp(q.currency, "EUR") == 0) conv = 1.0;
+                else if (q.has_conversion_rate_eur && q.conversion_rate_eur > 0.0) conv = q.conversion_rate_eur;
+
+                if (px > 0.0 && conv > 0.0) {
+                    spinoff_market_price_ok = 1;
+                    spinoff_market_cost_per_share_eur = px / conv;
+                    spinoff_market_raw_price = px;
+                    spinoff_market_fx = conv;
+                    utax__copy_text(spinoff_market_price_ccy, sizeof(spinoff_market_price_ccy), q.currency);
+                    utax__copy_text(spinoff_market_price_date, sizeof(spinoff_market_price_date), q.date_yyyy_mm_dd);
+
+                    fprintf(stderr,
+                            "[process_year] SPINOFF market price used (%s): %s -> %s on %s (price=%.8f %s, fx=%.8f)\n",
+                            spinoff_market_price_field,
+                            act->from_ticker,
+                            act->to_ticker,
+                            spinoff_market_price_date,
+                            spinoff_market_raw_price,
+                            spinoff_market_price_ccy,
+                            spinoff_market_fx);
+                } else {
+                    fprintf(stderr,
+                            "[process_year] WARNING: SPINOFF quote incomplete for %s on %s. Using ratio fallback price.\n",
+                            act->to_ticker,
+                            act->action_date);
+                }
+            } else {
+                fprintf(stderr,
+                        "[process_year] WARNING: SPINOFF market lookup failed for %s on %s (rc=%d). "
+                        "Using ratio fallback price.\n",
+                        act->to_ticker,
+                        act->action_date,
+                        (int)qrc);
+            }
+        }
 
         for (size_t i = 0; i < row_count; ++i) {
             utax_fifo_snapshot_row *lot = &rows[i];
@@ -617,6 +686,49 @@ static utax_rc utax__apply_actions_to_snapshots(utax_db_t *db,
 
             if (is_transfer) {
                 utax__copy_text(lot->broker, sizeof(lot->broker), transfer_dst);
+            } else if (strcmp(act->action_type, "SPINOFF") == 0) {
+                utax_fifo_snapshot_row child;
+                memset(&child, 0, sizeof(child));
+
+                child.qty_remaining = lot->qty_remaining * ratio;
+                if (child.qty_remaining <= UTAX_QTY_EPS) {
+                    if (track_idempotency && lot->lot_id > 0) {
+                        utax_rc rc = utax__mark_action_applied_for_lot(db, lot->lot_id, act->action_id);
+                        if (rc != UTAX_OK) return rc;
+                    }
+                    continue;
+                }
+
+                child.acq_trade_id = lot->acq_trade_id;
+                child.tax_year = lot->tax_year;
+                child.acq_commission_eur = 0.0;
+                utax__copy_text(child.broker, sizeof(child.broker), lot->broker);
+                utax__copy_text(child.ticker, sizeof(child.ticker), act->to_ticker);
+                utax__copy_text(child.country, sizeof(child.country), lot->country);
+                snprintf(child.acq_datetime, sizeof(child.acq_datetime), "%s 00:00", act->action_date);
+
+                if (spinoff_market_price_ok) {
+                    child.cost_per_share_eur = spinoff_market_cost_per_share_eur;
+                    child.last_updated_stock_price = spinoff_market_raw_price;
+                    child.last_updated_stock_conversion_rate_eur = spinoff_market_fx;
+                    utax__copy_text(child.last_updated_stock_currency, sizeof(child.last_updated_stock_currency), spinoff_market_price_ccy);
+                    snprintf(child.last_price_update_date, sizeof(child.last_price_update_date), "%s 00:00", spinoff_market_price_date);
+                } else {
+                    /* Fallback: ratio-derived price if market quote is unavailable. */
+                    child.cost_per_share_eur = (ratio > UTAX_EPS) ? (lot->cost_per_share_eur * ratio) : lot->cost_per_share_eur;
+                }
+
+                if (spawned_rows && spawned_count && spawned_cap) {
+                    if (*spawned_count == *spawned_cap) {
+                        size_t new_cap = (*spawned_cap == 0) ? 8 : (*spawned_cap * 2);
+                        utax_fifo_snapshot_row *grown =
+                            (utax_fifo_snapshot_row *)realloc(*spawned_rows, new_cap * sizeof(**spawned_rows));
+                        if (!grown) return UTAX_ERR_NOMEM;
+                        *spawned_rows = grown;
+                        *spawned_cap = new_cap;
+                    }
+                    (*spawned_rows)[(*spawned_count)++] = child;
+                }
             } else {
                 lot->qty_remaining *= ratio;
                 lot->cost_per_share_eur /= ratio;
@@ -704,6 +816,9 @@ UTAX_API utax_rc process_year_trades(
         size_t action_count = 0;
         utax_fifo_snapshot_row *buy_snapshot_rows = NULL;
         size_t buy_snapshot_count = 0;
+        utax_fifo_snapshot_row *spawned_snapshot_rows = NULL;
+        size_t spawned_snapshot_count = 0;
+        size_t spawned_snapshot_cap = 0;
 
         rc = utax__collect_trades_for_broker_type_year(db, broker_name, "BUY", year, &buy_rows, &buy_count);
         if (rc != UTAX_OK) goto broker_cleanup;
@@ -738,19 +853,75 @@ UTAX_API utax_rc process_year_trades(
                                              &buy_snapshot_count);
         if (rc != UTAX_OK) goto broker_cleanup;
 
-        if (action_count > 0) {
-            rc = utax__apply_actions_to_snapshots(db, snapshot_rows, snapshot_count, action_rows, action_count, 1);
-            if (rc != UTAX_OK) goto broker_cleanup;
-            rc = utax__apply_actions_to_snapshots(db, buy_snapshot_rows, buy_snapshot_count, action_rows, action_count, 0);
-            if (rc != UTAX_OK) goto broker_cleanup;
-        }
-
         utax_fifo_realized_row *realized_rows = NULL;
         size_t realized_count = 0;
         size_t realized_cap = 0;
+        size_t next_action_idx = 0;
 
         for (size_t s = 0; s < sell_count; ++s) {
             const utax_trades_row *sell = &sell_rows[s];
+            char sell_date[11];
+            if (strlen(sell->trade_datetime) >= 10) {
+                memcpy(sell_date, sell->trade_datetime, 10);
+                sell_date[10] = '\0';
+            } else {
+                sell_date[0] = '\0';
+            }
+
+            if (action_count > 0 && sell_date[0] != '\0') {
+                size_t n_apply = 0;
+                while (next_action_idx + n_apply < action_count) {
+                    const utax_corporate_actions_row *act = &action_rows[next_action_idx + n_apply];
+                    if (strncmp(act->action_date, sell_date, 10) <= 0) n_apply++;
+                    else break;
+                }
+
+                if (n_apply > 0) {
+                    rc = utax__apply_actions_to_snapshots(db,
+                                                          snapshot_rows,
+                                                          snapshot_count,
+                                                          action_rows + next_action_idx,
+                                                          n_apply,
+                                                          1,
+                                                          &spawned_snapshot_rows,
+                                                          &spawned_snapshot_count,
+                                                          &spawned_snapshot_cap);
+                    if (rc != UTAX_OK) goto broker_cleanup;
+                    rc = utax__apply_actions_to_snapshots(db,
+                                                          buy_snapshot_rows,
+                                                          buy_snapshot_count,
+                                                          action_rows + next_action_idx,
+                                                          n_apply,
+                                                          0,
+                                                          &spawned_snapshot_rows,
+                                                          &spawned_snapshot_count,
+                                                          &spawned_snapshot_cap);
+                    if (rc != UTAX_OK) goto broker_cleanup;
+
+                    if (spawned_snapshot_count > 0) {
+                        size_t new_count = buy_snapshot_count + spawned_snapshot_count;
+                        utax_fifo_snapshot_row *grown =
+                            (utax_fifo_snapshot_row *)realloc(buy_snapshot_rows, new_count * sizeof(*grown));
+                        if (!grown) {
+                            rc = UTAX_ERR_NOMEM;
+                            goto broker_cleanup;
+                        }
+                        memcpy(grown + buy_snapshot_count,
+                               spawned_snapshot_rows,
+                               spawned_snapshot_count * sizeof(*spawned_snapshot_rows));
+                        buy_snapshot_rows = grown;
+                        buy_snapshot_count = new_count;
+
+                        free(spawned_snapshot_rows);
+                        spawned_snapshot_rows = NULL;
+                        spawned_snapshot_count = 0;
+                        spawned_snapshot_cap = 0;
+                    }
+
+                    next_action_idx += n_apply;
+                }
+            }
+
             double already_realized_qty = utax__sum_realized_qty_for_sell(existing_realized_rows,
                                                                            existing_realized_count,
                                                                            sell->id);
@@ -858,6 +1029,50 @@ UTAX_API utax_rc process_year_trades(
             free(realized_rows);
         }
 
+        if (action_count > next_action_idx) {
+            size_t n_apply = action_count - next_action_idx;
+            rc = utax__apply_actions_to_snapshots(db,
+                                                  snapshot_rows,
+                                                  snapshot_count,
+                                                  action_rows + next_action_idx,
+                                                  n_apply,
+                                                  1,
+                                                  &spawned_snapshot_rows,
+                                                  &spawned_snapshot_count,
+                                                  &spawned_snapshot_cap);
+            if (rc != UTAX_OK) goto broker_cleanup;
+            rc = utax__apply_actions_to_snapshots(db,
+                                                  buy_snapshot_rows,
+                                                  buy_snapshot_count,
+                                                  action_rows + next_action_idx,
+                                                  n_apply,
+                                                  0,
+                                                  &spawned_snapshot_rows,
+                                                  &spawned_snapshot_count,
+                                                  &spawned_snapshot_cap);
+            if (rc != UTAX_OK) goto broker_cleanup;
+
+            if (spawned_snapshot_count > 0) {
+                size_t new_count = buy_snapshot_count + spawned_snapshot_count;
+                utax_fifo_snapshot_row *grown =
+                    (utax_fifo_snapshot_row *)realloc(buy_snapshot_rows, new_count * sizeof(*grown));
+                if (!grown) {
+                    rc = UTAX_ERR_NOMEM;
+                    goto broker_cleanup;
+                }
+                memcpy(grown + buy_snapshot_count,
+                       spawned_snapshot_rows,
+                       spawned_snapshot_count * sizeof(*spawned_snapshot_rows));
+                buy_snapshot_rows = grown;
+                buy_snapshot_count = new_count;
+
+                free(spawned_snapshot_rows);
+                spawned_snapshot_rows = NULL;
+                spawned_snapshot_count = 0;
+                spawned_snapshot_cap = 0;
+            }
+        }
+
         for (size_t sr = 0; sr < snapshot_count; ++sr) {
             utax_fifo_snapshot_row *row = &snapshot_rows[sr];
 
@@ -892,9 +1107,8 @@ UTAX_API utax_rc process_year_trades(
                     ins[k++] = buy_snapshot_rows[b];
                 }
             }
-
             size_t inserted = 0;
-            rc = utax_fifo_snapshot_insert_many(db, ins, remaining_buys, &inserted);
+            rc = utax_fifo_snapshot_insert_many(db, ins, k, &inserted);
             free(ins);
             if (rc != UTAX_OK) goto broker_cleanup;
         }
@@ -906,6 +1120,7 @@ broker_cleanup:
         free(existing_realized_rows);
         free(action_rows);
         free(buy_snapshot_rows);
+        free(spawned_snapshot_rows);
 
         if (rc != UTAX_OK) break;
     }

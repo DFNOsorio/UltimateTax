@@ -23,9 +23,11 @@ typedef struct utax_market_quote {
     char date_yyyy_mm_dd[11];
     char currency[UTAX_CCY_MAX];
 
+    double open_price;
     double close_price;
     double adjusted_close_price;
     double conversion_rate_eur;
+    int has_open_price;
     int has_adjusted_close;
     int has_conversion_rate_eur;
 
@@ -70,6 +72,20 @@ UTAX_API utax_rc utax_market_data_lookup_yahoo_date_from_json(
  * @return @ref UTAX_OK on success, otherwise an error code.
  */
 UTAX_API utax_rc utax_market_data_lookup_yahoo_date(
+    const char *ticker,
+    const char *date_yyyy_mm_dd,
+    int include_dividend_yield,
+    utax_market_quote *out_quote
+);
+
+/**
+ * @brief Fetch and parse one date-based quote from Yahoo chart endpoint, using forward-day fallback.
+ *
+ * Tries requested date first, then up to 3 following days.
+ * Intended for corporate-action child pricing (e.g., spin-offs) where first tradable quote
+ * may appear after the action date.
+ */
+UTAX_API utax_rc utax_market_data_lookup_yahoo_date_forward(
     const char *ticker,
     const char *date_yyyy_mm_dd,
     int include_dividend_yield,

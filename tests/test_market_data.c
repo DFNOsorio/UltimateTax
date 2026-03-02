@@ -13,7 +13,7 @@ static int almost_equal(double a, double b) {
 static void test_lookup_with_dividend(void) {
     const char *json =
         "{\"chart\":{\"result\":[{\"meta\":{\"currency\":\"USD\"},\"timestamp\":[1710374400],"
-        "\"indicators\":{\"quote\":[{\"close\":[100.0]}],\"adjclose\":[{\"adjclose\":[99.5]}]},"
+        "\"indicators\":{\"quote\":[{\"open\":[99.0],\"close\":[100.0]}],\"adjclose\":[{\"adjclose\":[99.5]}]},"
         "\"events\":{\"dividends\":{\"1710374400\":{\"amount\":1.25,\"date\":1710374400}}}}],\"error\":null}}";
 
     utax_market_quote q;
@@ -23,6 +23,8 @@ static void test_lookup_with_dividend(void) {
     assert(strcmp(q.ticker, "AAPL") == 0);
     assert(strcmp(q.date_yyyy_mm_dd, "2024-03-14") == 0);
     assert(strcmp(q.currency, "USD") == 0);
+    assert(q.has_open_price == 1);
+    assert(almost_equal(q.open_price, 99.0));
     assert(almost_equal(q.close_price, 100.0));
     assert(q.has_adjusted_close == 1);
     assert(almost_equal(q.adjusted_close_price, 99.5));
@@ -43,6 +45,8 @@ static void test_lookup_dividend_unavailable_non_error(void) {
 
     assert(rc == UTAX_OK);
     assert(strcmp(q.currency, "USD") == 0);
+    assert(q.has_open_price == 0);
+    assert(almost_equal(q.open_price, 0.0));
     assert(almost_equal(q.close_price, 250.0));
     assert(q.dividend_status == UTAX_MARKET_DIVIDEND_UNAVAILABLE);
     assert(almost_equal(q.dividend_amount, 0.0));

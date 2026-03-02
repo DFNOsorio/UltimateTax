@@ -577,8 +577,10 @@ utax_rc utax_market_data_lookup_yahoo_date_from_json(
     const char *yahoo_chart_json,
     utax_market_quote *out_quote
 ) {
+    double open_price = 0.0;
     double close_price = 0.0;
     double adjusted_close = 0.0;
+    int open_is_null = 0;
     int close_is_null = 0;
     int adj_is_null = 0;
     double dividend_amount = 0.0;
@@ -596,6 +598,11 @@ utax_rc utax_market_data_lookup_yahoo_date_from_json(
 
     if (!strstr(yahoo_chart_json, "\"chart\"")) return UTAX_ERR_NOT_FOUND;
     (void)utax__extract_meta_currency(yahoo_chart_json, out_quote->currency, sizeof(out_quote->currency));
+
+    if (utax__extract_array_value(yahoo_chart_json, "\"open\":", &open_price, &open_is_null) && !open_is_null) {
+        out_quote->open_price = open_price;
+        out_quote->has_open_price = 1;
+    }
 
     if (!utax__extract_array_value(yahoo_chart_json, "\"close\":", &close_price, &close_is_null)) {
         return UTAX_ERR_NOT_FOUND;
@@ -652,7 +659,54 @@ utax_rc utax_market_data_lookup_yahoo_date(
             );
         }
         if (rc == UTAX_OK) break;
-        if (rc != UTAX_ERR_NOT_FOUND && rc != UTAX_ERR_PARSE) return rc;
+        if (rc != UTAX_ERR_NOT_FOUND && rc != UTAX_ERR_PARSE && rc != UTAX_ERR_IO_READ) return rc;
+    }
+    if (rc != UTAX_OK) return UTAX_ERR_NOT_FOUND;
+
+    if (q.currency[0]) {
+        double conversion_rate_eur = 0.0;
+        if (utax__fetch_conversion_rate_eur(q.currency, q.date_yyyy_mm_dd, &conversion_rate_eur)) {
+            q.conversion_rate_eur = conversion_rate_eur;
+            q.has_conversion_rate_eur = 1;
+        }
+    }
+
+    *out_quote = q;
+    return UTAX_OK;
+}
+
+utax_rc utax_market_data_lookup_yahoo_date_forward(
+    const char *ticker,
+    const char *date_yyyy_mm_dd,
+    int include_dividend_yield,
+    utax_market_quote *out_quote
+) {
+    utax_market_quote q;
+    char lookup_date[11];
+    int fwd = 0;
+    utax_rc rc = UTAX_OK;
+
+    if (!ticker || !date_yyyy_mm_dd || !out_quote) return UTAX_ERR_INVALID_ARG;
+    if (!utax__valid_ticker(ticker)) return UTAX_ERR_INVALID_ARG;
+    if (!utax__parse_yyyy_mm_dd(date_yyyy_mm_dd, &(int){0}, &(int){0}, &(int){0})) return UTAX_ERR_INVALID_ARG;
+    utax__sleep_ms(UTAX_MARKET_CALL_THROTTLE_MS);
+
+    memset(&q, 0, sizeof(q));
+    for (fwd = 0; fwd <= 3; ++fwd) {
+        if (!utax__shift_date_days(date_yyyy_mm_dd, fwd, lookup_date, sizeof(lookup_date))) return UTAX_ERR_INVALID_ARG;
+        rc = utax__lookup_yahoo_single_date(ticker, lookup_date, include_dividend_yield, &q);
+        if (rc != UTAX_OK) {
+            utax__market_log(
+                "quote lookup failed ticker=%s req_date=%s try_date=%s (forward +%d day) rc=%d",
+                ticker,
+                date_yyyy_mm_dd,
+                lookup_date,
+                fwd,
+                (int)rc
+            );
+        }
+        if (rc == UTAX_OK) break;
+        if (rc != UTAX_ERR_NOT_FOUND && rc != UTAX_ERR_PARSE && rc != UTAX_ERR_IO_READ) return rc;
     }
     if (rc != UTAX_OK) return UTAX_ERR_NOT_FOUND;
 

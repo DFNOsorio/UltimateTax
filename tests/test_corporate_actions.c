@@ -188,12 +188,12 @@ int main(int argc, char **argv) {
         for (size_t i = 1; i < out_n; ++i) {
             UTAX_TEST_REQUIRE(strcmp(out[i-1].action_date, out[i].action_date) <= 0, "ordering mismatch");
         }
-        /* SPLIT row should have to_ticker empty string when read back */
+        /* SPLIT/CASH rows should have to_ticker empty string when read back */
         for (size_t i = 0; i < out_n; ++i) {
-            if (strcmp(out[i].action_type, "SPLIT") == 0) {
-                UTAX_TEST_REQUIRE(out[i].to_ticker[0] == '\0', "SPLIT must have empty to_ticker");
+            if (strcmp(out[i].action_type, "SPLIT") == 0 || strcmp(out[i].action_type, "CASH") == 0) {
+                UTAX_TEST_REQUIRE(out[i].to_ticker[0] == '\0', "SPLIT/CASH must have empty to_ticker");
             } else {
-                UTAX_TEST_REQUIRE(out[i].to_ticker[0] != '\0', "non-SPLIT must have to_ticker");
+                UTAX_TEST_REQUIRE(out[i].to_ticker[0] != '\0', "non-SPLIT/CASH must have to_ticker");
             }
             UTAX_TEST_REQUIRE(out[i].ratio > 0.0, "ratio should be computed in DB");
         }
